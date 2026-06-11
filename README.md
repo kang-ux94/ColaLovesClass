@@ -36,10 +36,10 @@
 - 不扣分、不算漏打卡
 - 可备注原因（如"生病""老师请假"）
 
-### ☁️ 云端同步
-- 零配置，无需注册
-- 设备1复制同步ID → 设备2粘贴 → 数据自动同步
-- 不需要服务器
+### ☁️ 云端同步（GitHub Gist）
+- 需要 GitHub 账号（已有则零额外注册）
+- 设备1生成同步ID → 设备2粘贴 → 数据自动同步
+- 不需要服务器，纯 GitHub API
 
 ### 📱 移动端优化
 - PWA 支持，可添加到手机主屏幕
@@ -62,7 +62,7 @@ cd ColaLovesClass/可乐爱上课
 ## 🛠 技术栈
 
 - 纯前端：HTML + CSS + JavaScript
-- 数据存储：localStorage（本地）+ jsonblob.com（云端同步）
+- 数据存储：localStorage（本地）+ GitHub Gist API（云端同步）
 - PWA：Service Worker 离线缓存
 - 部署：GitHub Pages
 
@@ -82,9 +82,11 @@ cd ColaLovesClass/可乐爱上课
 
 ## 🔄 跨设备同步
 
-1. 设备1：打开 ⚙️ 设置 → ☁️ 云端同步 → 📋 复制同步ID
-2. 设备2：打开同一个网址 → ⚙️ 设置 → ☁️ 云端同步 → 粘贴ID → 连接
-3. 后续自动同步
+1. 打开 ⚙️ 设置 → ☁️ 云端同步
+2. 创建 GitHub Token（仅 gist 权限，No expiration）
+3. 粘贴 Token → 点「生成同步ID」
+4. 设备2：粘贴同步ID → 点「连接」
+5. 后续自动同步
 
 ## 📦 数据备份
 
