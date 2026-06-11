@@ -1651,37 +1651,28 @@ document.addEventListener('DOMContentLoaded', () => {
   listenPWAInstall();
   
   // 初始化云端同步
-  initCloud().then(() => {
-    if (!cloudReady) return; // 连接失败，不同步
-    loadFromCloud().then(cloudData => {
-      if (cloudData) {
-        const localTime = appState._updatedAt || 0;
-        const cloudTime = cloudData._updatedAt || 0;
-        // 保护：云端数据必须包含有效课程列表才接受
-        if (!Array.isArray(cloudData.courses)) {
-          console.log('[云端] 数据格式无效，忽略');
-          return;
-        }
-        if (cloudTime > localTime) {
-          delete cloudData._updatedAt;
-          const localSettings = appState.settings;
-          appState = cloudData;
-          appState.settings = { ...appState.settings, ...localSettings };
-          saveState();
-          renderAll();
-          console.log('[云端] 已从云端同步', cloudData.courses.length, '门课程');
-        } else if (localTime > cloudTime) {
-          scheduleCloudSave();
-          console.log('[云端] 本地更新，已推送');
-        }
-      } else {
-        if (appState.courses.length > 0 || appState.checkins.length > 0) {
-          scheduleCloudSave();
-          console.log('[云端] 首次推送本地数据');
-        }
+  initCloud();
+  loadFromCloud().then(cloudData => {
+    if (cloudData && isValidCloudData(cloudData)) {
+      const localTime = appState._updatedAt || 0;
+      const cloudTime = cloudData._updatedAt || 0;
+      if (cloudTime > localTime) {
+        delete cloudData._updatedAt;
+        const localSettings = appState.settings;
+        appState = cloudData;
+        appState.settings = { ...appState.settings, ...localSettings };
+        saveState();
+        renderAll();
+        console.log('[云端] 已从云端同步', cloudData.courses?.length || 0, '门课程');
+      } else if (localTime > cloudTime) {
+        scheduleCloudSave();
+        console.log('[云端] 本地更新，已推送');
       }
-    });
-  });
+    } else if (appState.courses.length > 0 || appState.checkins.length > 0) {
+      scheduleCloudSave();
+      console.log('[云端] 首次推送本地数据');
+    }
+  }).catch(() => {});
 });
 
 // =============================================
