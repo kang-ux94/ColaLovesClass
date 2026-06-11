@@ -127,16 +127,29 @@ function isCheckedIn(courseId, dateStr) {
   return appState.checkins.some(c => c.courseId === courseId && c.date === dateStr);
 }
 
-function doCheckin(courseId) {
-  const t = today();
-  if (isCheckedIn(courseId, t.dateStr)) return false;
+function doCheckin(courseId, customDate = null, note = null) {
+  const t = customDate ? { dateStr: customDate, dayOfWeek: new Date(customDate).getDay() } : today();
+  const dateStr = t.dateStr;
+  
+  // 检查是否已经打卡
+  const existingIdx = appState.checkins.findIndex(c => c.courseId === courseId && c.date === dateStr);
+  
+  if (existingIdx >= 0) {
+    // 已打卡，更新备注
+    if (note !== null) {
+      appState.checkins[existingIdx].note = note;
+      saveState();
+    }
+    return false;
+  }
   
   // 记录打卡
   appState.checkins.push({
     id: 'chk_' + Date.now(),
     courseId,
-    date: t.dateStr,
+    date: dateStr,
     time: new Date().toTimeString().slice(0, 5),
+    note: note || null,
   });
   
   // 更新积分
@@ -482,13 +495,16 @@ function renderHistory() {
   const items = [];
   
   appState.checkins.forEach(c => {
+    if (c.noteOnly) return; // 跳过仅备注的记录
     const course = getCourse(c.courseId);
+    let text = `${course?.icon || '📚'} ${course?.name || '未知'} 打卡`;
+    if (c.note) text += ` · 📝${c.note}`;
     items.push({
       date: c.date,
       type: 'checkin',
-      text: `${course?.icon || '📚'} ${course?.name || '未知'} 打卡`,
-      points: POINTS_PER_CHECKIN,
-      ts: new Date(c.date + 'T' + c.time).getTime(),
+      text: text,
+      points: c.time ? POINTS_PER_CHECKIN : 0,
+      ts: new Date(c.date + 'T' + (c.time || '00:00')).getTime(),
     });
   });
   
@@ -1078,10 +1094,269 @@ function updateSettingsUI() {
   soundBtn.classList.toggle('active', appState.settings.sound);
 }
 
+// =============================================
+//  打卡日历
+// =============================================
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth(); // 0-based
+let selectedCalDate = null; // 'YYYY-MM-DD'
+
+function changeMonth(delta) {
+  calMonth += delta;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const grid = document.getElementById('calGrid');
+  const label = document.getElementById('calMonthLabel');
+  label.textContent = `${calYear}年${calMonth + 1}月`;
+  
+  // 星期头
+  let html = WEEKDAYS_FULL.map((d, i) => 
+    `<div class="cal-day-header${i === 0 || i === 6 ? ' weekend' : ''}">${d[0]}</div>`
+  ).join('');
+  
+  // 当月第一天
+  const firstDay = new Date(calYear, calMonth, 1);
+  const firstDayOfWeek = firstDay.getDay(); // 0=Sun
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const t = today();
+  
+  // 构建当月所有日期的状态映射
+  const dayStatusMap = buildDayStatusMap(calYear, calMonth, daysInMonth);
+  
+  // 前置空白
+  for (let i = 0; i < firstDayOfWeek; i++) {
+    html += '<div class="cal-day other-month"></div>';
+  }
+  
+  // 当月日期
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const status = dayStatusMap[dateStr] || 'no-course';
+    const isToday = dateStr === t.dateStr;
+    
+    let cls = 'cal-day ' + status;
+    if (isToday) cls += ' today';
+    if (status === 'no-course') cls += ' no-course';
+    
+    html += `<div class="${cls}" data-date="${dateStr}" onclick="onCalDayClick('${dateStr}', '${status}')">
+      <span class="cal-day-num">${d}</span>
+      ${status !== 'no-course' ? '<span class="cal-day-dot"></span>' : ''}
+    </div>`;
+  }
+  
+  grid.innerHTML = html;
+  
+  // 如果之前有选中日期，恢复详情面板
+  if (selectedCalDate) {
+    showDayDetail(selectedCalDate);
+  }
+}
+
+function buildDayStatusMap(year, month, daysInMonth) {
+  const map = {};
+  const now = new Date();
+  
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dayOfWeek = new Date(year, month, d).getDay();
+    
+    // 当天是否有课程
+    const hasCourse = appState.courses.some(c => 
+      c.schedules.some(s => s.dayOfWeek === dayOfWeek)
+    );
+    
+    if (!hasCourse) {
+      map[dateStr] = 'no-course';
+      continue;
+    }
+    
+    // 未来日期 → pending
+    const dateObj = new Date(year, month, d + 1); // +1 for end of day
+    if (dateObj > now) {
+      map[dateStr] = 'pending';
+      continue;
+    }
+    
+    // 过去日期：检查是否已打卡
+    const todayCourses = appState.courses.filter(c => 
+      c.schedules.some(s => s.dayOfWeek === dayOfWeek)
+    );
+    
+    const allChecked = todayCourses.every(c => isCheckedIn(c.id, dateStr));
+    map[dateStr] = allChecked ? 'checked' : 'missed';
+  }
+  
+  return map;
+}
+
+function onCalDayClick(dateStr, status) {
+  if (status === 'no-course') return;
+  selectedCalDate = dateStr;
+  showDayDetail(dateStr);
+}
+
+function showDayDetail(dateStr) {
+  const container = document.getElementById('calDayDetail');
+  const dayOfWeek = new Date(dateStr).getDay();
+  const courses = appState.courses.filter(c => 
+    c.schedules.some(s => s.dayOfWeek === dayOfWeek)
+  );
+  
+  if (courses.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  
+  const t = today();
+  const isFuture = dateStr > t.dateStr;
+  const isToday = dateStr === t.dateStr;
+  
+  let html = `<div style="font-weight:700;margin-bottom:8px;">${formatDate(dateStr)} ${WEEKDAYS_FULL[dayOfWeek]}</div>`;
+  
+  courses.forEach(course => {
+    const schedules = getSchedulesForDay(course, dayOfWeek);
+    const timeStr = schedules.map(s => s.time).join(' / ');
+    const checked = isCheckedIn(course.id, dateStr);
+    const checkinRecord = appState.checkins.find(c => c.courseId === course.id && c.date === dateStr);
+    
+    let statusLabel, statusCls;
+    if (checked) {
+      statusLabel = '✅ 已打卡';
+      statusCls = 'checked';
+    } else if (isFuture || isToday) {
+      statusLabel = '⏳ 待打卡';
+      statusCls = 'pending';
+    } else {
+      statusLabel = '❌ 漏打卡';
+      statusCls = 'missed';
+    }
+    
+    const note = checkinRecord?.note || '';
+    
+    html += `
+      <div class="cal-detail-course">
+        <span style="font-size:20px;">${course.icon}</span>
+        <div style="flex:1;">
+          <div style="font-weight:600;">${course.name}</div>
+          <div style="font-size:11px;color:var(--text-muted);">⏰ ${timeStr}</div>
+          ${note ? `<div class="cal-detail-note">📝 ${note}</div>` : ''}
+        </div>
+        <span class="cal-detail-status ${statusCls}">${statusLabel}</span>
+        ${(!checked && !isFuture) ? 
+          `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;flex:0;margin-left:4px;" 
+             onclick="openNotesModal('${course.id}', '${dateStr}', '${course.icon}', '${course.name.replace(/'/g, "\\'")}')">📝</button>` : ''}
+      </div>`;
+  });
+  
+  container.innerHTML = html;
+  container.style.display = 'block';
+}
+
+// =============================================
+//  补卡备注弹窗
+// =============================================
+let notesCourseId = null;
+let notesDateStr = null;
+
+function openNotesModal(courseId, dateStr, icon, name) {
+  notesCourseId = courseId;
+  notesDateStr = dateStr;
+  
+  // 检查是否已有备注
+  const existing = appState.checkins.find(c => c.courseId === courseId && c.date === dateStr);
+  
+  const modal = document.getElementById('modalNotes');
+  document.getElementById('notesModalTitle').textContent = `${icon} ${name}`;
+  document.getElementById('notesModalBody').innerHTML = `
+    <div style="text-align:center;padding:8px 0;color:var(--text-muted);">
+      📅 ${formatDate(dateStr)} ${WEEKDAYS_FULL[new Date(dateStr).getDay()]}
+      ${existing ? '<br>已打卡 ✅' : '<br><span style="color:var(--danger);">漏打卡 ❌</span>'}
+    </div>`;
+  
+  document.getElementById('inputNote').value = existing?.note || '';
+  
+  // 调整按钮
+  const btnCheckin = document.getElementById('btnCheckinNote');
+  const btnSave = document.getElementById('btnSaveNote');
+  
+  if (existing) {
+    btnCheckin.style.display = 'none';
+    btnSave.textContent = '💾 更新备注';
+    btnSave.style.flex = '1';
+  } else {
+    btnCheckin.style.display = '';
+    btnSave.textContent = '💾 仅保存备注';
+    btnSave.style.flex = '0.6';
+  }
+  
+  modal.style.display = 'flex';
+}
+
+function closeNotesModal() {
+  document.getElementById('modalNotes').style.display = 'none';
+  notesCourseId = null;
+  notesDateStr = null;
+}
+
+function saveNoteOnly() {
+  if (!notesCourseId || !notesDateStr) return;
+  const note = document.getElementById('inputNote').value.trim();
+  
+  const existing = appState.checkins.find(c => c.courseId === notesCourseId && c.date === notesDateStr);
+  if (existing) {
+    existing.note = note || null;
+  } else {
+    // 只保存备注，不打卡，不加分
+    appState.checkins.push({
+      id: 'note_' + Date.now(),
+      courseId: notesCourseId,
+      date: notesDateStr,
+      time: '',
+      note: note || null,
+      noteOnly: true, // 标记为仅备注
+    });
+  }
+  
+  saveState();
+  closeNotesModal();
+  renderAll();
+  showToast('📝 备注已保存');
+}
+
+function doCheckinWithNote() {
+  if (!notesCourseId || !notesDateStr) return;
+  const note = document.getElementById('inputNote').value.trim();
+  
+  // 如果之前有仅备注的记录，先删除
+  appState.checkins = appState.checkins.filter(c => 
+    !(c.courseId === notesCourseId && c.date === notesDateStr && c.noteOnly)
+  );
+  
+  const reached100 = doCheckin(notesCourseId, notesDateStr, note || null);
+  closeNotesModal();
+  renderAll();
+  
+  const course = getCourse(notesCourseId);
+  if (reached100) {
+    showToast(`🎉 ${course?.icon || ''} 补打卡成功！满分！快去抽盲盒！`);
+    setTimeout(() => {
+      switchTab('blindbox');
+      openBlindBox(notesCourseId);
+    }, 500);
+  } else {
+    showToast(`✅ 补打卡成功！+${POINTS_PER_CHECKIN}⭐`);
+  }
+}
+
 // --- 全局渲染 ---
 function renderAll() {
   renderTodayClasses();
   renderPointsBar();
+  renderCalendar();
   renderPointsBreakdown();
   renderHistory();
   renderBlindBox();
@@ -1120,6 +1395,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('modalSettings').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeSettings();
   });
+  
+  // 备注弹窗关闭
+  document.getElementById('modalNotes').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeNotesModal();
+  });
+  
+  // 保存备注按钮
+  document.getElementById('btnSaveNote').addEventListener('click', saveNoteOnly);
+  
+  // 补打卡按钮
+  document.getElementById('btnCheckinNote').addEventListener('click', doCheckinWithNote);
   
   // 通知按钮 → 改为跳转到设置（手机场景更实用）
   document.getElementById('btnNotify').addEventListener('click', () => {
