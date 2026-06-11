@@ -1951,6 +1951,77 @@ function closeSettings() {
   document.getElementById('modalSettings').style.display = 'none';
 }
 
+// 同步云存储 UI
+function updateSyncUI() {
+  const id = localStorage.getItem('cola_cloud_blob_id') || cloudBlobId;
+  const statusEl = document.getElementById('syncStatusText');
+  const idDisplay = document.getElementById('syncIdDisplay');
+  const idText = document.getElementById('syncIdText');
+  const btnCopy = document.getElementById('btnCopySync');
+  
+  if (id) {
+    statusEl.textContent = '已连接 ✅';
+    statusEl.style.color = '#6BCB77';
+    idDisplay.style.display = 'block';
+    idText.textContent = id;
+    btnCopy.style.display = 'block';
+  } else {
+    statusEl.textContent = '未连接（首次同步后自动生成）';
+    statusEl.style.color = '#FF6B6B';
+    idDisplay.style.display = 'none';
+    btnCopy.style.display = 'none';
+  }
+}
+
+function copySyncId() {
+  const id = localStorage.getItem('cola_cloud_blob_id') || cloudBlobId;
+  if (!id) { showToast('还没有同步ID，先保存一些数据'); return; }
+  navigator.clipboard.writeText(id).then(() => {
+    showToast('📋 同步ID已复制！粘贴到另一台设备');
+  }).catch(() => {
+    // 降级方案
+    const el = document.getElementById('syncIdText');
+    const range = document.createRange();
+    range.selectNode(el);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    showToast('📋 请手动复制上方ID');
+  });
+}
+
+function connectSync() {
+  const input = document.getElementById('inputSyncId').value.trim();
+  if (!input) { showToast('请粘贴同步ID'); return; }
+  localStorage.setItem('cola_cloud_blob_id', input);
+  cloudBlobId = input;
+  cloudReady = true;
+  updateCloudStatus('ok', '已连接');
+  updateSyncUI();
+  
+  // 从云端拉取数据
+  loadFromCloud().then(data => {
+    if (data) {
+      delete data._updatedAt;
+      const localSettings = appState.settings;
+      appState = data;
+      appState.settings = { ...appState.settings, ...localSettings };
+      saveState();
+      renderAll();
+      showToast('✅ 数据已从云端同步！');
+    } else {
+      showToast('⚠️ 云端暂无数据，本机数据将上传');
+      scheduleCloudSave();
+    }
+  }).catch(() => showToast('⚠️ 连接失败，请检查网络'));
+}
+
+// 更新 openSettings 以刷新同步UI
+const _origOpenSettings = openSettings;
+openSettings = function() {
+  _origOpenSettings();
+  updateSyncUI();
+};
+
 // =============================================
 //  奖品池管理
 // =============================================

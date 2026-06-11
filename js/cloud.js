@@ -1,106 +1,96 @@
 /* ============================================
-   CloudBase 云存储层
-   环境ID: colaloveclass-d9gzna4izc7622225
+   云存储层 - jsonblob.com
+   无需注册、无需API key、国内可用
    ============================================ */
 
-const CLOUD_ENV = 'colaloveclass-d9gzna4izc7622225';
-const CLOUD_COLLECTION = 'cola_data';
-const CLOUD_DOC = 'shared';
-
-let cloudDB = null;
+let cloudBlobId = null;
 let cloudReady = false;
 let cloudSyncing = false;
 
-// 状态回调
 function updateCloudStatus(status, msg) {
   const dot = document.getElementById('cloudStatusDot');
   const text = document.getElementById('cloudStatusText');
   if (dot) {
     dot.style.background = status === 'ok' ? '#6BCB77' : status === 'connecting' ? '#FFD93D' : '#FF6B6B';
   }
-  if (text) {
-    text.textContent = msg || '';
-    text.title = msg || '';
-  }
-  console.log('[CloudBase]', msg);
+  if (text) { text.textContent = msg || ''; }
 }
 
 async function initCloud() {
-  updateCloudStatus('connecting', '连接云存储...');
-  
-  if (typeof cloudbase === 'undefined') {
-    updateCloudStatus('error', 'SDK未加载（CDN可能被拦截）');
-    return;
-  }
-  
-  try {
-    const app = cloudbase.init({ env: CLOUD_ENV });
-    const auth = app.auth({ persistence: 'local' });
-    const loginState = await auth.getLoginState();
-    
-    if (!loginState) {
-      await auth.anonymousAuthProvider().signIn();
-    }
-    
-    cloudDB = app.database();
+  updateCloudStatus('connecting', '连接中...');
+  // 从 localStorage 读取已保存的 blob ID（跨设备共享此 ID 即可同步）
+  cloudBlobId = localStorage.getItem('cola_cloud_blob_id');
+  if (cloudBlobId) {
     cloudReady = true;
-    updateCloudStatus('ok', '云存储已连接');
-  } catch (e) {
-    const msg = e.message || String(e);
-    if (msg.includes('not enabled') || msg.includes('未开通') || msg.includes('not authorized')) {
-      updateCloudStatus('error', '匿名登录未开启（去控制台打开）');
-    } else if (msg.includes('permission') || msg.includes('unauthorized')) {
-      updateCloudStatus('error', '数据库权限未设置（需设为所有人可读写）');
-    } else {
-      updateCloudStatus('error', '连接失败: ' + msg.substring(0, 20));
-    }
+    updateCloudStatus('ok', '已连接');
+  } else {
+    updateCloudStatus('connecting', '等待首次同步...');
   }
 }
 
 async function loadFromCloud() {
-  if (!cloudReady || !cloudDB) return null;
+  if (!cloudBlobId) return null;
   try {
-    const res = await cloudDB.collection(CLOUD_COLLECTION).doc(CLOUD_DOC).get();
-    if (res.data && res.data.length > 0) {
-      const doc = res.data[0];
-      delete doc._id;
-      delete doc._openid;
-      return doc;
-    }
+    const resp = await fetch(`https://jsonblob.com/api/jsonBlob/${cloudBlobId}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    // 提取实际数据（排除元数据）
+    if (data._updatedAt !== undefined) return data;
     return null;
   } catch (e) {
-    const msg = e.message || '';
-    if (!msg.includes('collection not exists') && !msg.includes('doc not exists')) {
-      console.warn('[CloudBase] 读取失败:', msg);
-      updateCloudStatus('error', '读取失败（检查数据库权限）');
-    }
+    console.warn('[云端] 读取失败:', e.message);
     return null;
   }
 }
 
 async function saveToCloud(data) {
-  if (!cloudReady || !cloudDB || cloudSyncing) return;
+  if (cloudSyncing) return;
   cloudSyncing = true;
   updateCloudStatus('connecting', '同步中...');
   try {
-    const payload = { ...data, _updatedAt: Date.now() };
-    await cloudDB.collection(CLOUD_COLLECTION).doc(CLOUD_DOC).set(payload);
-    updateCloudStatus('ok', '云存储已连接');
-  } catch (e) {
-    const msg = e.message || '';
-    if (msg.includes('collection not exists')) {
-      try {
-        await cloudDB.createCollection(CLOUD_COLLECTION);
-        await cloudDB.collection(CLOUD_COLLECTION).doc(CLOUD_DOC).set({ ...data, _updatedAt: Date.now() });
-        updateCloudStatus('ok', '云存储已连接');
-      } catch (e2) {
-        updateCloudStatus('error', '集合创建失败（去控制台手动创建cola_data）');
+    const payload = JSON.stringify({ ...data, _updatedAt: Date.now() });
+    
+    if (cloudBlobId) {
+      // 更新已有 blob
+      const resp = await fetch(`https://jsonblob.com/api/jsonBlob/${cloudBlobId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: payload,
+      });
+      if (resp.ok) {
+        updateCloudStatus('ok', '已连接');
+      } else {
+        // blob 可能过期，重新创建
+        cloudBlobId = null;
+        localStorage.removeItem('cola_cloud_blob_id');
+        await saveToCloud(data);
+        return;
       }
-    } else if (msg.includes('permission') || msg.includes('403')) {
-      updateCloudStatus('error', '无写入权限（设为所有人可读写）');
     } else {
-      console.warn('[CloudBase] 保存失败:', msg);
+      // 创建新 blob
+      const resp = await fetch('https://jsonblob.com/api/jsonBlob', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: payload,
+      });
+      if (resp.ok) {
+        const location = resp.headers.get('Location') || '';
+        const id = location.split('/').pop();
+        if (id) {
+          cloudBlobId = id;
+          cloudReady = true;
+          localStorage.setItem('cola_cloud_blob_id', id);
+          updateCloudStatus('ok', '已连接');
+          console.log('[云端] Blob ID:', id);
+        }
+      } else {
+        updateCloudStatus('error', '创建失败');
+      }
     }
+  } catch (e) {
+    console.warn('[云端] 保存失败:', e.message);
   }
   cloudSyncing = false;
 }
@@ -112,3 +102,12 @@ function scheduleCloudSave() {
     saveToCloud(appState);
   }, 2000);
 }
+
+// 设置同步 ID（用于跨设备）
+function setCloudBlobId(id) {
+  cloudBlobId = id;
+  localStorage.setItem('cola_cloud_blob_id', id);
+  cloudReady = true;
+  updateCloudStatus('ok', '已连接');
+}
+window.setCloudBlobId = setCloudBlobId;
