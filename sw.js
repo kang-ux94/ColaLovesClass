@@ -1,66 +1,88 @@
 // Service Worker - 可乐爱上课
-const CACHE_NAME = 'cola-class-v2';
-const FILES_TO_CACHE = [
-  './',
-  './index.html',
+// 版本号：每次发布代码时手动更新，强制刷新缓存
+const CACHE_VERSION = 'v3-20260611';
+const CACHE_NAME = 'cola-class-' + CACHE_VERSION;
+const ASSETS_TO_CACHE = [
   './css/style.css',
   './js/app.js',
   './manifest.json',
 ];
 
-// 安装：预缓存核心文件
+// 安装：预缓存静态资源（不包括 HTML，HTML 必须网络优先）
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] 缓存核心文件');
-      return cache.addAll(FILES_TO_CACHE).catch((err) => {
-        console.warn('[SW] 部分文件缓存失败（可能离线）:', err);
+      console.log('[SW] 预缓存 ' + CACHE_VERSION);
+      return cache.addAll(ASSETS_TO_CACHE).catch((err) => {
+        console.warn('[SW] 部分缓存失败:', err);
       });
     })
   );
-  // 立即激活，不等待旧SW
   self.skipWaiting();
 });
 
-// 激活：清理旧缓存
+// 激活：清理旧版本缓存，通知客户端刷新
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.filter((key) => key !== CACHE_NAME).map((key) => {
+          console.log('[SW] 清理旧缓存:', key);
+          return caches.delete(key);
+        })
       );
+    }).then(() => {
+      // 通知所有打开的页面：有新版本可用
+      return self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({ type: 'NEW_VERSION', version: CACHE_VERSION });
+        });
+      });
     })
   );
   self.clients.claim();
 });
 
-// 请求拦截：缓存优先策略
+// 请求拦截：HTML 网络优先，静态资源缓存优先，其他网络优先
 self.addEventListener('fetch', (event) => {
-  // 只处理 GET 请求
   if (event.request.method !== 'GET') return;
-
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      // 有缓存直接用
-      if (cached) return cached;
-
-      // 没缓存就请求网络，同时缓存结果
-      return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200 || response.type !== 'basic') {
-          return response;
-        }
+  
+  const url = new URL(event.request.url);
+  const isHTML = event.request.destination === 'document' || url.pathname.endsWith('.html') || url.pathname === '/' || url.pathname.endsWith('/');
+  
+  if (isHTML) {
+    // HTML: 网络优先，获取失败才用缓存
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        // 同时更新缓存
         const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, clone);
-        });
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         return response;
       }).catch(() => {
-        // 离线且没缓存，返回首页
-        if (event.request.destination === 'document') {
-          return caches.match('./index.html');
+        return caches.match(event.request).then(cached => cached || caches.match('./index.html'));
+      })
+    );
+    return;
+  }
+  
+  // 其他资源：缓存优先，后台更新
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      const fetchPromise = fetch(event.request).then((response) => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         }
-        return new Response('', { status: 408 });
-      });
+        return response;
+      }).catch(() => null);
+      
+      // 有缓存立即返回，同时后台更新
+      if (cached) {
+        fetchPromise; // 后台静默更新（fire and forget）
+        return cached;
+      }
+      
+      return fetchPromise.then(r => r || new Response('', { status: 408 }));
     })
   );
 });

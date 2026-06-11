@@ -1451,7 +1451,34 @@ document.addEventListener('DOMContentLoaded', () => {
 function registerSW() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
-      .then(reg => console.log('[PWA] Service Worker 已注册', reg.scope))
+      .then(reg => {
+        console.log('[PWA] Service Worker 已注册', reg.scope);
+        
+        // 监听 SW 消息：新版本可用时提示刷新
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data && event.data.type === 'NEW_VERSION') {
+            console.log('[PWA] 新版本:', event.data.version);
+            // 自动静默刷新
+            setTimeout(() => {
+              if (confirm('🎉 可乐爱上课有更新！点击确定刷新到最新版本')) {
+                window.location.reload();
+              }
+            }, 1000);
+          }
+        });
+        
+        // 检测 SW 更新
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('[PWA] 新版本已就绪，即将刷新');
+              }
+            });
+          }
+        });
+      })
       .catch(err => console.warn('[PWA] SW 注册失败（可能需HTTPS）:', err));
   }
 }
