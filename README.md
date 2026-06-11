@@ -36,10 +36,11 @@
 - 不扣分、不算漏打卡
 - 可备注原因（如"生病""老师请假"）
 
-### ☁️ 云端同步（GitHub Gist）
-- 需要 GitHub 账号（已有则零额外注册）
-- 设备1生成同步ID → 设备2粘贴 → 数据自动同步
-- 不需要服务器，纯 GitHub API
+### ☁️ 云端同步
+- 零配置，自动同步
+- 数据存入腾讯云 CloudBase 云存储
+- 所有设备打开同一网址，数据自动互通
+- 无需注册、无需 Token、无需任何设置
 
 ### 📱 移动端优化
 - PWA 支持，可添加到手机主屏幕
@@ -62,7 +63,7 @@ cd ColaLovesClass/可乐爱上课
 ## 🛠 技术栈
 
 - 纯前端：HTML + CSS + JavaScript
-- 数据存储：localStorage（本地）+ GitHub Gist API（云端同步）
+- 数据存储：localStorage（本地）+ CloudBase COS（云端自动同步）
 - PWA：Service Worker 离线缓存
 - 部署：GitHub Pages
 

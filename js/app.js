@@ -1961,75 +1961,13 @@ function closeSettings() {
 }
 
 // 同步云存储 UI
-function updateSyncUI() {
-  const token = localStorage.getItem('cola_cloud_token');
-  const gistId = localStorage.getItem('cola_cloud_gist_id');
-  const statusEl = document.getElementById('syncStatusText');
-  const tokenInput = document.getElementById('inputCloudToken');
-  
-  if (token && gistId) {
-    statusEl.textContent = '已连接 ✅';
-    statusEl.style.color = '#6BCB77';
-    document.getElementById('inputSyncId').value = gistId;
-    if (tokenInput) tokenInput.value = '••••••••';
-  } else if (token) {
-    statusEl.textContent = 'Token已保存 · 需要生成同步ID';
-    statusEl.style.color = '#FFD93D';
-    if (tokenInput) tokenInput.value = '••••••••';
-  } else {
-    statusEl.textContent = '未配置';
-    statusEl.style.color = '#FF6B6B';
-  }
+function closeSettings() {
+  document.getElementById('modalSettings').style.display = 'none';
 }
 
-async function createSyncGist() {
-  const token = document.getElementById('inputCloudToken').value.trim();
-  if (!token) { showToast('请先粘贴 GitHub Token'); return; }
-  
-  configureSync(token, null);
-  updateSyncUI();
-  showToast('Token 已保存，正在生成同步ID...');
-  
-  // 手动触发首次同步
-  await manualSync();
-  updateSyncUI();
-  
-  if (cloudGistId) {
-    document.getElementById('inputSyncId').value = cloudGistId;
-    showToast('✅ 同步ID已生成！复制到另一台设备');
-  }
-}
-
-function connectExistingSync() {
-  const gistId = document.getElementById('inputSyncId').value.trim();
-  if (!gistId) { showToast('请粘贴同步ID'); return; }
-  
-  configureSync(cloudToken || localStorage.getItem('cola_cloud_token') || '', gistId);
-  updateSyncUI();
-  updateCloudStatus('ok', '已连接');
-  
-  loadFromCloud().then(data => {
-    if (data) {
-      delete data._updatedAt;
-      const s = appState.settings;
-      appState = data;
-      appState.settings = { ...appState.settings, ...s };
-      saveState();
-      renderAll();
-      showToast('✅ 数据已从云端同步！');
-    } else {
-      showToast('云端暂无数据，本机数据将上传');
-      scheduleCloudSave();
-    }
-  });
-}
-
-// monkey-patch openSettings
-const _origOpenSettings = openSettings;
-openSettings = function() {
-  _origOpenSettings();
-  updateSyncUI();
-};
+// =============================================
+//  奖品池管理
+// =============================================
 
 // =============================================
 //  奖品池管理
