@@ -16,16 +16,24 @@ const COURSE_COLORS = [
   '#6BCB77', '#FFD93D', '#FF8C5A', '#C084FC', '#FB923C'
 ];
 
-// 盲盒奖池
-const BLIND_BOX_POOL = [
-  { name: '奥特曼', emoji: '🦸', rarity: '普通', weight: 20, color: '#FF4444' },
-  { name: '超级飞侠', emoji: '✈️', rarity: '普通', weight: 20, color: '#448AFF' },
-  { name: '恐龙', emoji: '🦖', rarity: '普通', weight: 15, color: '#66BB6A' },
-  { name: '磁吸积木', emoji: '🧲', rarity: '稀有', weight: 15, color: '#AB47BC' },
-  { name: '变形金刚', emoji: '🤖', rarity: '稀有', weight: 15, color: '#FF7043' },
-  { name: '零食大礼包', emoji: '🍬', rarity: '稀有', weight: 10, color: '#FFA726' },
-  { name: '赵一鸣购物券', emoji: '🎫', rarity: '超级稀有', weight: 5, color: '#FFD700' },
+// 默认盲盒奖池（首次使用或重置时）
+const DEFAULT_PRIZE_POOL = [
+  { name: '奥特曼', emoji: '🦸', weight: 20, enabled: true },
+  { name: '超级飞侠', emoji: '✈️', weight: 20, enabled: true },
+  { name: '恐龙', emoji: '🦖', weight: 15, enabled: true },
+  { name: '磁吸积木', emoji: '🧲', weight: 15, enabled: true },
+  { name: '变形金刚', emoji: '🤖', weight: 15, enabled: true },
+  { name: '零食大礼包', emoji: '🍬', weight: 10, enabled: true },
+  { name: '赵一鸣购物券', emoji: '🎫', weight: 5, enabled: true },
 ];
+
+function getPrizePool() {
+  if (!appState.prizePool || appState.prizePool.length === 0) {
+    appState.prizePool = JSON.parse(JSON.stringify(DEFAULT_PRIZE_POOL));
+    saveState();
+  }
+  return appState.prizePool.filter(p => p.enabled !== false);
+}
 
 // --- 状态管理 ---
 let appState = loadState();
@@ -37,6 +45,7 @@ function getDefaultState() {
     checkins: [],
     points: { total: 0, courses: {} },
     blindBoxHistory: [],
+    prizePool: JSON.parse(JSON.stringify(DEFAULT_PRIZE_POOL)),
     settings: { notifications: false, sound: true }
   };
 }
@@ -177,7 +186,8 @@ function drawBlindBox(courseId) {
   cp.firstRoundActive = false;
   
   // 抽奖
-  const prize = weightedRandom(BLIND_BOX_POOL);
+  const pool = getPrizePool();
+  const prize = weightedRandom(pool);
   
   appState.blindBoxHistory.push({
     id: 'bb_' + Date.now(),
@@ -185,7 +195,7 @@ function drawBlindBox(courseId) {
     date: today().dateStr,
     prize: prize.name,
     emoji: prize.emoji,
-    rarity: prize.rarity,
+    rarity: prize.weight <= 5 ? '超级稀有' : prize.weight <= 10 ? '稀有' : '普通',
     round: cp.completedRounds,
   });
   
@@ -636,9 +646,11 @@ function openBlindBox(courseId) {
 
 function showPrizeReveal(prize) {
   document.getElementById('prizeEmoji').textContent = prize.emoji;
-  document.getElementById('prizeName').textContent = prize.prize;
+  document.getElementById('prizeName').textContent = prize.name || prize.prize;
+  const w = prize.weight || 20;
+  const rarity = w <= 5 ? '超级稀有' : w <= 10 ? '稀有' : '普通';
   document.getElementById('prizeRarity').textContent = 
-    `${prize.rarity}奖品 · ${prize.courseName} 第${prize.round}轮`;
+    `${rarity}奖品 · ${prize.courseName} 第${prize.round}轮`;
   document.getElementById('prizeReveal').style.display = 'flex';
   
   if (appState.settings.sound) playWinSound();
@@ -1407,6 +1419,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // 补打卡按钮
   document.getElementById('btnCheckinNote').addEventListener('click', doCheckinWithNote);
   
+  // 奖品编辑弹窗
+  document.getElementById('modalPrize').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closePrizeEditor();
+  });
+  document.getElementById('btnSavePrize').addEventListener('click', savePrize);
+  document.getElementById('inputPrizeWeight').addEventListener('input', function() {
+    document.getElementById('weightDisplay').textContent = this.value;
+  });
+  
   // 通知按钮 → 改为跳转到设置（手机场景更实用）
   document.getElementById('btnNotify').addEventListener('click', () => {
     openSettings();
@@ -1688,6 +1709,7 @@ function resetAllData() {
 // =============================================
 function openSettings() {
   document.getElementById('modalSettings').style.display = 'flex';
+  renderPrizeListSettings();
   // iOS Safari PWA安装提示
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
@@ -1702,4 +1724,115 @@ function openSettings() {
 
 function closeSettings() {
   document.getElementById('modalSettings').style.display = 'none';
+}
+
+// =============================================
+//  奖品池管理
+// =============================================
+let editingPrizeIndex = -1;
+
+function renderPrizeListSettings() {
+  const container = document.getElementById('prizeListSettings');
+  const pool = appState.prizePool || DEFAULT_PRIZE_POOL;
+  const enabledPool = pool.filter(p => p.enabled !== false);
+  const totalWeight = enabledPool.reduce((s, p) => s + p.weight, 0);
+  
+  let html = '';
+  if (totalWeight > 0) {
+    html += `<div class="prize-total-info">总权重: ${totalWeight} | 当前启用的奖品: ${enabledPool.length} 个</div>`;
+  }
+  
+  pool.forEach((prize, idx) => {
+    const pct = totalWeight > 0 && prize.enabled !== false ? ((prize.weight / totalWeight) * 100).toFixed(1) : 0;
+    const disabled = prize.enabled === false;
+    html += `
+      <div class="prize-list-item ${disabled ? 'disabled' : ''}">
+        <span class="prize-emoji">${prize.emoji}</span>
+        <div class="prize-info">
+          <div class="prize-name">${prize.name}</div>
+          <div class="prize-weight">权重: ${prize.weight}</div>
+          ${!disabled ? `<div class="prize-pct">概率: ${pct}%</div>` : ''}
+        </div>
+        <div class="prize-actions">
+          <button class="prize-action-btn" onclick="openPrizeEditor(${idx})" title="编辑">✏️</button>
+          <button class="prize-action-btn" onclick="togglePrize(${idx})" title="${disabled ? '启用' : '停用'}">${disabled ? '▶' : '⏸'}</button>
+          <button class="prize-action-btn del" onclick="deletePrize(${idx})" title="删除">✕</button>
+        </div>
+      </div>`;
+  });
+  
+  container.innerHTML = html || '<div style="text-align:center;color:var(--text-muted);padding:8px;">还没有奖品，点下方添加</div>';
+}
+
+function openPrizeEditor(idx = -1) {
+  editingPrizeIndex = idx;
+  const pool = appState.prizePool || DEFAULT_PRIZE_POOL;
+  const modal = document.getElementById('modalPrize');
+  
+  if (idx >= 0 && pool[idx]) {
+    const p = pool[idx];
+    document.getElementById('prizeModalTitle').textContent = '编辑奖品';
+    document.getElementById('inputPrizeName').value = p.name;
+    document.getElementById('inputPrizeEmoji').value = p.emoji;
+    document.getElementById('inputPrizeWeight').value = p.weight;
+    document.getElementById('weightDisplay').textContent = p.weight;
+  } else {
+    document.getElementById('prizeModalTitle').textContent = '添加奖品';
+    document.getElementById('inputPrizeName').value = '';
+    document.getElementById('inputPrizeEmoji').value = '🎁';
+    document.getElementById('inputPrizeWeight').value = 15;
+    document.getElementById('weightDisplay').textContent = '15';
+  }
+  
+  modal.style.display = 'flex';
+  
+  // 实时显示权重
+  const rangeEl = document.getElementById('inputPrizeWeight');
+  rangeEl.oninput = () => {
+    document.getElementById('weightDisplay').textContent = rangeEl.value;
+  };
+}
+
+function closePrizeEditor() {
+  document.getElementById('modalPrize').style.display = 'none';
+  editingPrizeIndex = -1;
+}
+
+function savePrize() {
+  const name = document.getElementById('inputPrizeName').value.trim();
+  if (!name) { showToast('请输入奖品名称'); return; }
+  
+  const emoji = document.getElementById('inputPrizeEmoji').value || '🎁';
+  const weight = parseInt(document.getElementById('inputPrizeWeight').value) || 10;
+  
+  if (!appState.prizePool) appState.prizePool = JSON.parse(JSON.stringify(DEFAULT_PRIZE_POOL));
+  
+  if (editingPrizeIndex >= 0) {
+    appState.prizePool[editingPrizeIndex] = { name, emoji, weight, enabled: true };
+  } else {
+    appState.prizePool.push({ name, emoji, weight, enabled: true });
+  }
+  
+  saveState();
+  closePrizeEditor();
+  renderPrizeListSettings();
+  showToast('✅ 奖品已保存');
+}
+
+function deletePrize(idx) {
+  if (!appState.prizePool || idx < 0 || idx >= appState.prizePool.length) return;
+  const prize = appState.prizePool[idx];
+  if (!confirm(`确定删除「${prize.name}」吗？`)) return;
+  appState.prizePool.splice(idx, 1);
+  saveState();
+  renderPrizeListSettings();
+  showToast(`已删除「${prize.name}」`);
+}
+
+function togglePrize(idx) {
+  if (!appState.prizePool || idx < 0 || idx >= appState.prizePool.length) return;
+  const prize = appState.prizePool[idx];
+  prize.enabled = prize.enabled === false ? true : false;
+  saveState();
+  renderPrizeListSettings();
 }

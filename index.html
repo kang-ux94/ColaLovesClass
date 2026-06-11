@@ -10,10 +10,10 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <link rel="manifest" href="manifest.json?v=4">
+  <link rel="manifest" href="manifest.json?v=5">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%23FF6B35'/><text x='96' y='120' text-anchor='middle' font-size='90'>🎒</text></svg>">
   <title>可乐爱上课</title>
-  <link rel="stylesheet" href="css/style.css?v=4">
+  <link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
 
@@ -155,7 +155,7 @@
       <span class="alert-dot"></span>
       <span id="forgetMsg">今天还没有打卡哦，记得打卡赚积分！</span>
     </div>
-    <span style="font-size:10px;color:var(--text-muted);margin-left:auto;white-space:nowrap;">v4</span>
+    <span style="font-size:10px;color:var(--text-muted);margin-left:auto;white-space:nowrap;">v5</span>
   </div>
 </div>
 
@@ -237,6 +237,15 @@
     </div>
     
     <div class="settings-section">
+      <div class="settings-section-title">🎁 奖品池管理</div>
+      <div id="prizeListSettings"></div>
+      <button class="settings-btn" onclick="openPrizeEditor()" style="text-align:center;">
+        ＋ 添加奖品
+      </button>
+      <p class="settings-hint">自定义奖品名称、图标和概率权重（数值越大越容易中）</p>
+    </div>
+    
+    <div class="settings-section">
       <div class="settings-section-title">🔄 跨设备使用</div>
       <div class="settings-info">
         <p>📱 手机打卡 → 导出数据备份</p>
@@ -246,6 +255,32 @@
     </div>
     
     <button class="btn btn-ghost" style="width:100%;margin-top:12px;" onclick="closeSettings()">关闭</button>
+  </div>
+</div>
+
+<!-- Prize Editor Modal -->
+<div class="modal-overlay" id="modalPrize" style="display:none;">
+  <div class="modal-sheet">
+    <div class="modal-title" id="prizeModalTitle">添加奖品</div>
+    <div class="form-group">
+      <label class="form-label">奖品名称</label>
+      <input class="form-input" id="inputPrizeName" placeholder="例如：奥特曼" maxlength="20">
+    </div>
+    <div class="form-group">
+      <label class="form-label">图标表情</label>
+      <input class="form-input" id="inputPrizeEmoji" placeholder="🦸" maxlength="4">
+    </div>
+    <div class="form-group">
+      <label class="form-label">概率权重 <span id="weightLabel" style="font-weight:400;color:var(--text-muted);">(1~100，越大越容易中)</span></label>
+      <input class="form-input" type="range" id="inputPrizeWeight" min="1" max="100" value="20" style="width:100%;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);">
+        <span>低概率</span><span id="weightDisplay">20</span><span>高概率</span>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closePrizeEditor()">取消</button>
+      <button class="btn btn-primary" id="btnSavePrize">保存</button>
+    </div>
   </div>
 </div>
 
@@ -279,6 +314,6 @@
   </div>
 </div>
 
-<script src="js/app.js?v=4"></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>
