@@ -155,7 +155,9 @@
       <span class="alert-dot"></span>
       <span id="forgetMsg">今天还没有打卡哦，记得打卡赚积分！</span>
     </div>
-    <span style="font-size:10px;color:var(--text-muted);margin-left:auto;white-space:nowrap;">v9</span>
+    <span id="cloudStatusDot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#B2BEC3;margin:0 4px;" title="云存储状态"></span>
+    <span id="cloudStatusText" style="font-size:10px;color:var(--text-muted);white-space:nowrap;">离线</span>
+    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">v9</span>
   </div>
 </div>
 
@@ -322,9 +324,14 @@
   </div>
 </div>
 
-<!-- CloudBase SDK -->
+<!-- CloudBase SDK (主CDN + 备用) -->
 <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/2.0.0/cloudbase.full.js"></script>
-<script src="js/cloud.js?v=9"></script>
-<script src="js/app.js?v=9"></script>
+<script>
+  if (typeof cloudbase === 'undefined') {
+    document.write('<script src="https://unpkg.com/@cloudbase/js-sdk@2.0.0/cloudbase.full.js"><\/script>');
+  }
+</script>
+<script src="js/cloud.js?v=10"></script>
+<script src="js/app.js?v=10"></script>
 </body>
 </html>
