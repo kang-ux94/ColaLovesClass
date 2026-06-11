@@ -1,9 +1,12 @@
 /* ============================================
-   云存储层 - jsonblob.com
-   无需注册、无需API key、国内可用
+   云存储层 - GitHub Gist
+   需要一次配置：在设置中粘贴 GitHub Token
    ============================================ */
 
-let cloudBlobId = null;
+const GIST_FILENAME = 'cola_data.json';
+
+let cloudToken = null;
+let cloudGistId = null;
 let cloudReady = false;
 let cloudSyncing = false;
 
@@ -18,26 +21,39 @@ function updateCloudStatus(status, msg) {
 
 async function initCloud() {
   updateCloudStatus('connecting', '连接中...');
-  // 从 localStorage 读取已保存的 blob ID（跨设备共享此 ID 即可同步）
-  cloudBlobId = localStorage.getItem('cola_cloud_blob_id');
-  if (cloudBlobId) {
+  cloudToken = localStorage.getItem('cola_cloud_token');
+  cloudGistId = localStorage.getItem('cola_cloud_gist_id');
+  if (cloudToken && cloudGistId) {
     cloudReady = true;
     updateCloudStatus('ok', '已连接');
+  } else if (cloudToken) {
+    updateCloudStatus('connecting', '需要生成同步ID');
   } else {
-    updateCloudStatus('connecting', '等待首次同步...');
+    updateCloudStatus('connecting', '等待配置...');
   }
 }
 
+function ghHeaders() {
+  return {
+    'Authorization': `token ${cloudToken}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json',
+  };
+}
+
 async function loadFromCloud() {
-  if (!cloudBlobId) return null;
+  if (!cloudGistId) return null;
   try {
-    const resp = await fetch(`https://jsonblob.com/api/jsonBlob/${cloudBlobId}`, {
-      headers: { 'Accept': 'application/json' }
-    });
+    // 公开 gist 可以不需 token 读取
+    const h = cloudToken ? ghHeaders() : { 'Accept': 'application/vnd.github.v3+json' };
+    const resp = await fetch(`https://api.github.com/gists/${cloudGistId}`, { headers: h });
     if (!resp.ok) return null;
-    const data = await resp.json();
-    // 提取实际数据（排除元数据）
-    if (data._updatedAt !== undefined) return data;
+    const gist = await resp.json();
+    const file = gist.files[GIST_FILENAME];
+    if (file?.content) {
+      const data = JSON.parse(file.content);
+      if (data._updatedAt !== undefined) return data;
+    }
     return null;
   } catch (e) {
     console.warn('[云端] 读取失败:', e.message);
@@ -46,47 +62,43 @@ async function loadFromCloud() {
 }
 
 async function saveToCloud(data) {
-  if (cloudSyncing) return;
+  if (!cloudToken || cloudSyncing) return;
   cloudSyncing = true;
   updateCloudStatus('connecting', '同步中...');
   try {
-    const payload = JSON.stringify({ ...data, _updatedAt: Date.now() });
+    const payload = JSON.stringify({ ...data, _updatedAt: Date.now() }, null, 2);
     
-    if (cloudBlobId) {
-      // 更新已有 blob
-      const resp = await fetch(`https://jsonblob.com/api/jsonBlob/${cloudBlobId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: payload,
+    if (cloudGistId) {
+      const resp = await fetch(`https://api.github.com/gists/${cloudGistId}`, {
+        method: 'PATCH',
+        headers: ghHeaders(),
+        body: JSON.stringify({ files: { [GIST_FILENAME]: { content: payload } } }),
       });
       if (resp.ok) {
         updateCloudStatus('ok', '已连接');
       } else {
-        // blob 可能过期，重新创建
-        cloudBlobId = null;
-        localStorage.removeItem('cola_cloud_blob_id');
-        await saveToCloud(data);
-        return;
+        console.warn('[云端] 更新失败:', resp.status);
       }
     } else {
-      // 创建新 blob
-      const resp = await fetch('https://jsonblob.com/api/jsonBlob', {
+      // 创建新 Gist
+      const resp = await fetch('https://api.github.com/gists', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: payload,
+        headers: ghHeaders(),
+        body: JSON.stringify({
+          description: '可乐爱上课 - 数据同步',
+          public: false,
+          files: { [GIST_FILENAME]: { content: payload } },
+        }),
       });
       if (resp.ok) {
-        const location = resp.headers.get('Location') || '';
-        const id = location.split('/').pop();
-        if (id) {
-          cloudBlobId = id;
-          cloudReady = true;
-          localStorage.setItem('cola_cloud_blob_id', id);
-          updateCloudStatus('ok', '已连接');
-          console.log('[云端] Blob ID:', id);
-        }
+        const gist = await resp.json();
+        cloudGistId = gist.id;
+        cloudReady = true;
+        localStorage.setItem('cola_cloud_gist_id', gist.id);
+        updateCloudStatus('ok', '已连接');
+        console.log('[云端] Gist ID:', gist.id);
       } else {
-        updateCloudStatus('error', '创建失败');
+        updateCloudStatus('error', '创建失败（检查Token）');
       }
     }
   } catch (e) {
@@ -95,19 +107,59 @@ async function saveToCloud(data) {
   cloudSyncing = false;
 }
 
+// 手动触发同步
+async function manualSync() {
+  if (!cloudGistId) {
+    // 首次：创建 gist 并上传
+    if (!cloudToken) {
+      updateCloudStatus('error', '请先在设置中输入GitHub Token');
+      return;
+    }
+    await saveToCloud(appState);
+  } else {
+    // 已有 gist：先拉再推
+    const cloudData = await loadFromCloud();
+    if (cloudData) {
+      const localTime = appState._updatedAt || 0;
+      const cloudTime = cloudData._updatedAt || 0;
+      if (cloudTime > localTime) {
+        delete cloudData._updatedAt;
+        const s = appState.settings;
+        appState = cloudData;
+        appState.settings = { ...appState.settings, ...s };
+        saveState();
+        renderAll();
+        updateCloudStatus('ok', '已从云端同步');
+      } else {
+        await saveToCloud(appState);
+      }
+    } else {
+      await saveToCloud(appState);
+    }
+  }
+}
+window.manualSync = manualSync;
+
 let cloudSaveTimer = null;
 function scheduleCloudSave() {
+  if (!cloudToken) return;
   if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
-  cloudSaveTimer = setTimeout(() => {
-    saveToCloud(appState);
-  }, 2000);
+  cloudSaveTimer = setTimeout(() => saveToCloud(appState), 3000);
 }
 
-// 设置同步 ID（用于跨设备）
-function setCloudBlobId(id) {
-  cloudBlobId = id;
-  localStorage.setItem('cola_cloud_blob_id', id);
-  cloudReady = true;
-  updateCloudStatus('ok', '已连接');
+// 配置同步
+function configureSync(token, gistId) {
+  if (token) {
+    cloudToken = token;
+    localStorage.setItem('cola_cloud_token', token);
+  }
+  if (gistId) {
+    cloudGistId = gistId;
+    cloudReady = true;
+    localStorage.setItem('cola_cloud_gist_id', gistId);
+    updateCloudStatus('ok', '已连接');
+  } else if (cloudToken) {
+    updateCloudStatus('connecting', '点击"生成同步ID"');
+  }
 }
-window.setCloudBlobId = setCloudBlobId;
+window.configureSync = configureSync;

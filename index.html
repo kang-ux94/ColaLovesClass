@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.json?v=9">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%23FF6B35'/><text x='96' y='120' text-anchor='middle' font-size='90'>🎒</text></svg>">
   <title>可乐爱上课</title>
-  <link rel="stylesheet" href="css/style.css?v=9">
+  <link rel="stylesheet" href="css/style.css?v=12">
 </head>
 <body>
 
@@ -157,7 +157,7 @@
     </div>
     <span id="cloudStatusDot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#B2BEC3;margin:0 4px;cursor:pointer;" title="云同步状态" onclick="openSettings()"></span>
     <span id="cloudStatusText" style="font-size:10px;color:var(--text-muted);white-space:nowrap;cursor:pointer;" onclick="openSettings()">离线</span>
-    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">v11</span>
+    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">v12</span>
   </div>
 </div>
 
@@ -193,6 +193,7 @@
     </div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+      <button class="btn btn-danger" id="btnDeleteCourse" style="display:none;flex:0.5;" onclick="deleteCourseFromModal()">🗑️ 删除</button>
       <button class="btn btn-primary" id="btnSaveCourse">保存</button>
     </div>
   </div>
@@ -255,17 +256,21 @@
     </div>
     
     <div class="settings-section">
-      <div class="settings-section-title">☁️ 云端同步</div>
+      <div class="settings-section-title">☁️ 云端同步（GitHub Gist）</div>
       <div id="cloudSyncInfo" class="settings-info" style="margin-bottom:8px;">
-        <p>状态: <span id="syncStatusText">未连接</span></p>
-        <p id="syncIdDisplay" style="display:none;word-break:break-all;">同步ID: <span id="syncIdText" style="font-family:monospace;"></span></p>
+        <p>1. 去 <a href="https://github.com/settings/tokens/new?scopes=gist&description=可乐爱上课" target="_blank" style="color:var(--primary);">github.com/settings/tokens</a> 创建 Token</p>
+        <p>   Expiration 选 No expiration，勾选 gist 权限，点 Generate</p>
+        <p>2. 复制 Token 粘贴到下方</p>
+        <p>3. 点「生成同步ID」</p>
+        <p style="margin-top:4px;color:var(--text-muted);">状态: <span id="syncStatusText">未配置</span></p>
       </div>
-      <button class="settings-btn" onclick="copySyncId()" id="btnCopySync" style="display:none;">📋 复制同步ID</button>
+      <input class="form-input" id="inputCloudToken" type="password" placeholder="粘贴 GitHub Token" style="margin-bottom:6px;">
+      <button class="settings-btn primary" onclick="createSyncGist()">🔗 生成同步ID</button>
       <div style="display:flex;gap:8px;margin-top:4px;">
-        <input class="form-input" id="inputSyncId" placeholder="粘贴其他设备的同步ID" style="flex:1;">
-        <button class="btn btn-primary" onclick="connectSync()" style="flex:0;padding:8px 16px;font-size:14px;">连接</button>
+        <input class="form-input" id="inputSyncId" placeholder="或粘贴已有的同步ID" style="flex:1;">
+        <button class="btn btn-primary" onclick="connectExistingSync()" style="flex:0;padding:8px 16px;font-size:14px;">连接</button>
       </div>
-      <p class="settings-hint">在设备1上复制同步ID → 在设备2上粘贴 → 数据自动同步</p>
+      <p class="settings-hint">设备1生成 → 设备2粘贴同步ID → 完成</p>
     </div>
     
     <button class="btn btn-ghost" style="width:100%;margin-top:12px;" onclick="closeSettings()">关闭</button>
@@ -330,7 +335,7 @@
 </div>
 
 <!-- Cloud Sync -->
-<script src="js/cloud.js?v=11"></script>
-<script src="js/app.js?v=11"></script>
+<script src="js/cloud.js?v=12"></script>
+<script src="js/app.js?v=12"></script>
 </body>
 </html>
