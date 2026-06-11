@@ -1,6 +1,6 @@
 // Service Worker - 可乐爱上课
 // 版本号：每次发布代码时手动更新，强制刷新缓存
-const CACHE_VERSION = 'v3-20260611';
+const CACHE_VERSION = 'v4-20260611';
 const CACHE_NAME = 'cola-class-' + CACHE_VERSION;
 const ASSETS_TO_CACHE = [
   './css/style.css',
