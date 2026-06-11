@@ -44,7 +44,22 @@ function getDefaultState() {
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const state = JSON.parse(raw);
+      // 迁移旧数据格式: course.dayOfWeek + course.time → course.schedules
+      if (state.courses) {
+        state.courses = state.courses.map(c => {
+          if (!c.schedules) {
+            return {
+              ...c,
+              schedules: [{ dayOfWeek: c.dayOfWeek ?? 1, time: c.time ?? '16:00' }],
+            };
+          }
+          return c;
+        });
+      }
+      return state;
+    }
   } catch (e) { /* ignore */ }
   return getDefaultState();
 }
@@ -194,7 +209,9 @@ function renderTodayClasses() {
   document.getElementById('todayDate').textContent = `${t.year}年${t.month}月${t.day}日`;
   document.getElementById('todayWeekday').textContent = WEEKDAYS_FULL[t.dayOfWeek];
   
-  const todayCourses = appState.courses.filter(c => c.dayOfWeek === t.dayOfWeek);
+  const todayCourses = appState.courses.filter(c => 
+    c.schedules.some(s => s.dayOfWeek === t.dayOfWeek)
+  );
   
   if (todayCourses.length === 0) {
     container.innerHTML = `
@@ -208,10 +225,10 @@ function renderTodayClasses() {
   container.innerHTML = todayCourses.map(course => {
     const checked = isCheckedIn(course.id, t.dateStr);
     const isPast = isPastClass(course);
+    const schedules = getSchedulesForDay(course, t.dayOfWeek);
+    const timeStr = schedules.map(s => s.time).join(' / ');
     
     let statusClass = 'pending';
-    let btnClass = 'go';
-    let btnText = '打卡 +10⭐';
     let btnHtml;
     
     if (checked) {
@@ -221,7 +238,7 @@ function renderTodayClasses() {
       statusClass = 'missed';
       btnHtml = `<button class="checkin-btn missed-btn" onclick="quickCheckin('${course.id}')">补打卡</button>`;
     } else {
-      btnHtml = `<button class="checkin-btn go" onclick="quickCheckin('${course.id}')">${btnText}</button>`;
+      btnHtml = `<button class="checkin-btn go" onclick="quickCheckin('${course.id}')">打卡 +10⭐</button>`;
     }
     
     return `
@@ -231,26 +248,37 @@ function renderTodayClasses() {
         </div>
         <div class="class-info">
           <div class="class-name">${course.name}</div>
-          <div class="class-time">⏰ ${course.time}</div>
+          <div class="class-time">⏰ ${timeStr}</div>
         </div>
         ${btnHtml}
       </div>`;
   }).join('');
 }
 
+// 获取课程在指定日期的上课时间（多个时间段取最早或全部）
+function getSchedulesForDay(course, dayOfWeek) {
+  return course.schedules.filter(s => s.dayOfWeek === dayOfWeek).sort((a, b) => a.time.localeCompare(b.time));
+}
+
 function isPastClass(course) {
+  const t = today();
+  const schedules = getSchedulesForDay(course, t.dayOfWeek);
+  if (schedules.length === 0) return false;
   const now = new Date();
-  const [h, m] = course.time.split(':').map(Number);
-  // 如果当前时间超过课程时间2小时，认为是已过课程
-  const classTime = new Date(now);
-  classTime.setHours(h, m, 0, 0);
-  return now > new Date(classTime.getTime() + 2 * 60 * 60 * 1000);
+  // 如果当前时间超过最后一个时间段 2 小时，认为已过
+  const lastSchedule = schedules[schedules.length - 1];
+  const [h, m] = lastSchedule.time.split(':').map(Number);
+  const lastTime = new Date(now);
+  lastTime.setHours(h, m, 0, 0);
+  return now > new Date(lastTime.getTime() + 2 * 60 * 60 * 1000);
 }
 
 // 积分概览
 function renderPointsBar() {
   const t = today();
-  const todayCourses = appState.courses.filter(c => c.dayOfWeek === t.dayOfWeek);
+  const todayCourses = appState.courses.filter(c => 
+    c.schedules.some(s => s.dayOfWeek === t.dayOfWeek)
+  );
   
   // 找到当天课程中积分最接近100的
   let activeRoundPoints = 0;
@@ -308,7 +336,7 @@ function renderWeekCalendar() {
   const t = today();
   
   container.innerHTML = week.map(d => {
-    const hasClass = appState.courses.some(c => c.dayOfWeek === d.dayOfWeek);
+    const hasClass = appState.courses.some(c => c.schedules.some(s => s.dayOfWeek === d.dayOfWeek));
     return `
       <div class="day-cell ${d.isToday ? 'today' : ''}" 
            onclick="selectDay(${d.dayOfWeek})" data-day="${d.dayOfWeek}">
@@ -339,7 +367,9 @@ function selectDay(dayOfWeek) {
 
 function renderDaySchedule(dayOfWeek) {
   const container = document.getElementById('daySchedule');
-  const courses = appState.courses.filter(c => c.dayOfWeek === dayOfWeek);
+  const courses = appState.courses.filter(c => 
+    c.schedules.some(s => s.dayOfWeek === dayOfWeek)
+  );
   
   if (courses.length === 0) {
     container.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:20px;">
@@ -348,16 +378,20 @@ function renderDaySchedule(dayOfWeek) {
     return;
   }
   
-  container.innerHTML = courses.map(c => `
+  container.innerHTML = courses.map(c => {
+    const daySchedules = getSchedulesForDay(c, dayOfWeek);
+    const timeStr = daySchedules.map(s => s.time).join(' / ');
+    return `
     <div class="schedule-course-item">
       <div class="course-color-dot" style="background:${c.color}"></div>
       <span style="font-size:22px;">${c.icon}</span>
       <div style="flex:1;">
         <div style="font-weight:700;">${c.name}</div>
-        <div style="font-size:12px;color:var(--text-muted);">⏰ ${c.time}</div>
+        <div style="font-size:12px;color:var(--text-muted);">⏰ ${timeStr}</div>
       </div>
       <button class="btn-danger" onclick="deleteCourse('${c.id}')">删除</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // 全部课程列表
@@ -370,19 +404,24 @@ function renderAllCourses() {
   
   container.innerHTML = `
     <div class="card-title" style="margin-bottom:12px;">📚 全部课程</div>
-    ${appState.courses.map(c => `
+    ${appState.courses.map(c => {
+      const scheduleSummary = c.schedules.map(s => 
+        `${WEEKDAYS_FULL[s.dayOfWeek]} ${s.time}`
+      ).join(' · ');
+      return `
       <div class="schedule-course-item">
         <div class="course-color-dot" style="background:${c.color}"></div>
         <span style="font-size:22px;">${c.icon}</span>
         <div style="flex:1;">
           <div style="font-weight:700;">${c.name}</div>
           <div style="font-size:12px;color:var(--text-muted);">
-            每周${WEEKDAYS_FULL[c.dayOfWeek]} ⏰ ${c.time}
+            ${scheduleSummary}
           </div>
         </div>
         <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;flex:0;" 
                 onclick="editCourse('${c.id}')">✏️</button>
-      </div>`).join('')}`;
+      </div>`;
+    }).join('')}`;
 }
 
 // 积分明细
@@ -726,16 +765,16 @@ function openModal(title, courseData = null) {
   const modal = document.getElementById('modalCourse');
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('inputCourseName').value = courseData?.name || '';
-  document.getElementById('inputCourseTime').value = courseData?.time || '16:00';
   document.getElementById('inputCourseIcon').value = courseData?.icon || '📚';
   editingCourseId = courseData?.id || null;
   
-  // 星期选择器
-  const dayContainer = document.getElementById('daySelector');
-  dayContainer.innerHTML = WEEKDAYS_FULL.map((name, idx) => `
-    <button class="day-chip ${courseData?.dayOfWeek === idx ? 'selected' : ''}" 
-            data-day="${idx}" onclick="selectDayChip(${idx})">${name[1]}</button>
-  `).join('');
+  // 构建时间段列表
+  const schedules = courseData?.schedules || [{ dayOfWeek: 1, time: '16:00' }];
+  const container = document.getElementById('scheduleRows');
+  container.innerHTML = '';
+  schedules.forEach((s, idx) => {
+    container.appendChild(buildScheduleRow(s.dayOfWeek, s.time, idx === 0));
+  });
   
   // 颜色选择器
   const colorContainer = document.getElementById('colorPicker');
@@ -745,7 +784,6 @@ function openModal(title, courseData = null) {
          onclick="selectColor(this, '${color}')"></div>
   `).join('');
   
-  // 预选颜色
   if (courseData?.color) {
     document.querySelector(`.color-dot[data-color="${courseData.color}"]`)?.classList.add('selected');
   }
@@ -753,15 +791,59 @@ function openModal(title, courseData = null) {
   modal.style.display = 'flex';
 }
 
+function buildScheduleRow(dayOfWeek = 1, time = '16:00', isFirst = false) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'schedule-row';
+  
+  // 星期选择（小号芯片）
+  const daySel = document.createElement('div');
+  daySel.className = 'mini-day-selector';
+  WEEKDAYS_FULL.forEach((name, idx) => {
+    const chip = document.createElement('button');
+    chip.className = 'mini-day-chip' + (idx === dayOfWeek ? ' selected' : '');
+    chip.textContent = name[1];
+    chip.type = 'button';
+    chip.onclick = () => {
+      daySel.querySelectorAll('.mini-day-chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+    };
+    daySel.appendChild(chip);
+  });
+  wrapper.appendChild(daySel);
+  
+  // 时间输入
+  const timeInput = document.createElement('input');
+  timeInput.type = 'time';
+  timeInput.className = 'schedule-time-input';
+  timeInput.value = time;
+  wrapper.appendChild(timeInput);
+  
+  // 删除按钮
+  const delBtn = document.createElement('button');
+  delBtn.className = 'del-schedule-btn';
+  delBtn.textContent = '✕';
+  delBtn.type = 'button';
+  delBtn.onclick = () => {
+    const rows = document.querySelectorAll('#scheduleRows .schedule-row');
+    if (rows.length <= 1) {
+      showToast('至少保留一个时间段');
+      return;
+    }
+    wrapper.remove();
+  };
+  wrapper.appendChild(delBtn);
+  
+  return wrapper;
+}
+
+function addScheduleRow() {
+  const container = document.getElementById('scheduleRows');
+  container.appendChild(buildScheduleRow(1, '16:00', false));
+}
+
 function closeModal() {
   document.getElementById('modalCourse').style.display = 'none';
   editingCourseId = null;
-}
-
-function selectDayChip(day) {
-  document.querySelectorAll('#daySelector .day-chip').forEach(el => {
-    el.classList.toggle('selected', parseInt(el.dataset.day) === day);
-  });
 }
 
 function selectColor(el, color) {
@@ -769,22 +851,36 @@ function selectColor(el, color) {
   el.classList.add('selected');
 }
 
-function getSelectedDay() {
-  const selected = document.querySelector('#daySelector .day-chip.selected');
-  return selected ? parseInt(selected.dataset.day) : 1;
-}
-
 function getSelectedColor() {
   const selected = document.querySelector('#colorPicker .color-dot.selected');
   return selected ? selected.dataset.color : COURSE_COLORS[0];
+}
+
+function collectSchedulesFromForm() {
+  const rows = document.querySelectorAll('#scheduleRows .schedule-row');
+  const schedules = [];
+  rows.forEach(row => {
+    const chips = row.querySelectorAll('.mini-day-chip');
+    let dayOfWeek = 1;
+    chips.forEach((chip, idx) => {
+      if (chip.classList.contains('selected')) dayOfWeek = idx;
+    });
+    const timeInput = row.querySelector('.schedule-time-input');
+    const time = timeInput ? timeInput.value : '16:00';
+    if (time) {
+      schedules.push({ dayOfWeek, time });
+    }
+  });
+  return schedules;
 }
 
 function saveCourse() {
   const name = document.getElementById('inputCourseName').value.trim();
   if (!name) { showToast('请输入课程名称'); return; }
   
-  const dayOfWeek = getSelectedDay();
-  const time = document.getElementById('inputCourseTime').value || '16:00';
+  const schedules = collectSchedulesFromForm();
+  if (schedules.length === 0) { showToast('请至少设置一个时间段'); return; }
+  
   const icon = document.getElementById('inputCourseIcon').value || '📚';
   const color = getSelectedColor();
   
@@ -792,13 +888,13 @@ function saveCourse() {
     // 编辑
     const idx = appState.courses.findIndex(c => c.id === editingCourseId);
     if (idx >= 0) {
-      appState.courses[idx] = { ...appState.courses[idx], name, dayOfWeek, time, icon, color };
+      appState.courses[idx] = { ...appState.courses[idx], name, schedules, icon, color };
     }
   } else {
     // 新增
     const newCourse = {
       id: 'c_' + Date.now(),
-      name, dayOfWeek, time, icon, color,
+      name, schedules, icon, color,
     };
     appState.courses.push(newCourse);
     
@@ -811,6 +907,12 @@ function saveCourse() {
     };
     appState.points.total += FIRST_ROUND_START;
   }
+  
+  saveState();
+  closeModal();
+  renderAll();
+  showToast(editingCourseId ? '课程已更新 ✅' : '课程已添加！初始赠送90分 🎉');
+}
   
   saveState();
   closeModal();
@@ -886,7 +988,9 @@ function switchTab(tabName) {
 // --- 防遗忘机制 ---
 function updatePendingBadge() {
   const t = today();
-  const todayCourses = appState.courses.filter(c => c.dayOfWeek === t.dayOfWeek);
+  const todayCourses = appState.courses.filter(c => 
+    c.schedules.some(s => s.dayOfWeek === t.dayOfWeek)
+  );
   const pendingCount = todayCourses.filter(c => !isCheckedIn(c.id, t.dateStr) && !isPastClass(c)).length;
   
   const badge = document.getElementById('badgePending');
@@ -942,26 +1046,30 @@ function scheduleNotifications() {
   if (!appState.settings.notifications) return;
   
   const t = today();
-  const todayCourses = appState.courses.filter(c => c.dayOfWeek === t.dayOfWeek);
+  const todayCourses = appState.courses.filter(c => 
+    c.schedules.some(s => s.dayOfWeek === t.dayOfWeek)
+  );
   
   todayCourses.forEach(course => {
-    const [h, m] = course.time.split(':').map(Number);
-    const classTime = new Date(t.year, t.month - 1, t.day, h, m);
-    const remindTime = new Date(classTime.getTime() - 15 * 60 * 1000); // 提前15分钟
-    const now = new Date();
-    
-    if (remindTime > now) {
-      const delay = remindTime.getTime() - now.getTime();
-      setTimeout(() => {
-        if (Notification.permission === 'granted') {
-          new Notification('⏰ 可乐爱上课', {
-            body: `${course.icon} ${course.name} 还有15分钟就要开始啦！记得打卡哦~`,
-            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">🎒</text></svg>',
-          });
-        }
-      }, delay);
-    }
-  });
+    const daySchedules = getSchedulesForDay(course, t.dayOfWeek);
+    daySchedules.forEach(schedule => {
+      const [h, m] = schedule.time.split(':').map(Number);
+      const classTime = new Date(t.year, t.month - 1, t.day, h, m);
+      const remindTime = new Date(classTime.getTime() - 15 * 60 * 1000);
+      const now = new Date();
+      
+      if (remindTime > now) {
+        const delay = remindTime.getTime() - now.getTime();
+        setTimeout(() => {
+          if (Notification.permission === 'granted') {
+            new Notification('⏰ 可乐爱上课', {
+              body: `${course.icon} ${course.name} ${schedule.time} 还有15分钟就要开始啦！记得打卡哦~`,
+              icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">🎒</text></svg>',
+            });
+          }
+        }, delay);
+      }
+    });
 }
 
 function updateSettingsUI() {
@@ -1120,16 +1228,9 @@ function exportCalendar() {
     'X-WR-CALNAME:可乐爱上课 - 课程提醒',
   ];
   
-  // 为每门课生成未来8周的重复事件
+  // 为每门课的每个时间段生成重复事件
   appState.courses.forEach(course => {
-    const [h, m] = course.time.split(':').map(Number);
     const now = new Date();
-    const startDate = new Date(now);
-    
-    // 找到下一个匹配的星期几
-    while (startDate.getDay() !== course.dayOfWeek) {
-      startDate.setDate(startDate.getDate() + 1);
-    }
     
     // 格式化为ICS日期
     const formatICSDate = (d, hour, min) => {
@@ -1140,30 +1241,38 @@ function exportCalendar() {
         String(min).padStart(2, '0') + '00';
     };
     
-    const dtStart = formatICSDate(startDate, h, m);
-    const endH = h;
-    const endM = m + 60; // 默认1小时课程
-    const dtEnd = formatICSDate(startDate, endH, endM);
-    
-    // 生成唯一ID
-    const uid = `cola-${course.id}-${Date.now()}@colalovesclass`;
-    
-    // 提醒：提前15分钟
-    ics.push(
-      'BEGIN:VEVENT',
-      `UID:${uid}`,
-      `DTSTART:${dtStart}`,
-      `DTEND:${dtEnd}`,
-      `SUMMARY:${course.icon} ${course.name}`,
-      `DESCRIPTION:🎒 可乐爱上课提醒\\n课程：${course.name}\\n记得打卡赚积分哦！`,
-      'RRULE:FREQ=WEEKLY;COUNT=52',
-      'BEGIN:VALARM',
-      'TRIGGER:-PT15M',
-      'ACTION:DISPLAY',
-      `DESCRIPTION:⏰ ${course.name} 还有15分钟开始！记得打开可乐爱上课打卡~`,
-      'END:VALARM',
-      'END:VEVENT'
-    );
+    course.schedules.forEach(schedule => {
+      const [h, m] = schedule.time.split(':').map(Number);
+      const startDate = new Date(now);
+      
+      // 找到下一个匹配的星期几
+      while (startDate.getDay() !== schedule.dayOfWeek) {
+        startDate.setDate(startDate.getDate() + 1);
+      }
+      
+      const dtStart = formatICSDate(startDate, h, m);
+      const endH = h;
+      const endM = m + 60;
+      const dtEnd = formatICSDate(startDate, endH, endM);
+      
+      const uid = `cola-${course.id}-${schedule.dayOfWeek}-${schedule.time.replace(':', '')}@colalovesclass`;
+      
+      ics.push(
+        'BEGIN:VEVENT',
+        `UID:${uid}`,
+        `DTSTART:${dtStart}`,
+        `DTEND:${dtEnd}`,
+        `SUMMARY:${course.icon} ${course.name}`,
+        `DESCRIPTION:🎒 可乐爱上课提醒\\n课程：${course.name}\\n时间：${schedule.time}\\n记得打卡赚积分哦！`,
+        'RRULE:FREQ=WEEKLY;COUNT=52',
+        'BEGIN:VALARM',
+        'TRIGGER:-PT15M',
+        'ACTION:DISPLAY',
+        `DESCRIPTION:⏰ ${course.name} ${schedule.time} 还有15分钟开始！`,
+        'END:VALARM',
+        'END:VEVENT'
+      );
+    });
   });
   
   ics.push('END:VCALENDAR');

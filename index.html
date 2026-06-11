@@ -144,12 +144,11 @@
       <input class="form-input" id="inputCourseName" placeholder="例如：街舞课" maxlength="20">
     </div>
     <div class="form-group">
-      <label class="form-label">上课星期</label>
-      <div class="day-selector" id="daySelector"></div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">上课时间</label>
-      <input class="form-input" type="time" id="inputCourseTime" value="16:00">
+      <label class="form-label">上课时间段 <span style="font-weight:400;color:var(--text-muted);">（可添加多个）</span></label>
+      <div id="scheduleRows">
+        <!-- Dynamic schedule rows -->
+      </div>
+      <button class="add-schedule-btn" onclick="addScheduleRow()">＋ 添加时间段</button>
     </div>
     <div class="form-group">
       <label class="form-label">图标表情</label>

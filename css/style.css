@@ -1032,3 +1032,92 @@ body::before {
   align-items: center;
   gap: 12px;
 }
+
+/* --- Schedule Row (in modal) --- */
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  background: #FAFAFA;
+  border-radius: var(--radius-sm);
+  padding: 8px;
+}
+
+.schedule-row .mini-day-selector {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+}
+
+.schedule-row .mini-day-chip {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: white;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.schedule-row .mini-day-chip:hover { border-color: var(--primary); }
+.schedule-row .mini-day-chip.selected {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.schedule-row .schedule-time-input {
+  width: 90px;
+  padding: 6px 8px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: var(--font-main);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.schedule-row .schedule-time-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.schedule-row .del-schedule-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: #FFE8E8;
+  color: var(--danger);
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-schedule-btn {
+  width: 100%;
+  padding: 10px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: 14px;
+  color: var(--primary);
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 4px;
+}
+
+.add-schedule-btn:hover {
+  background: #FFF3E0;
+  border-color: var(--primary);
+}
