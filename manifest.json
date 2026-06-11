@@ -2,7 +2,7 @@
   "name": "可乐爱上课",
   "short_name": "可乐上课",
   "description": "可乐的课表打卡与盲盒抽奖",
-  "start_url": "./index.html?v=3",
+  "start_url": "./index.html?v=4",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#FF6B35",
