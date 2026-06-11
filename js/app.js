@@ -1189,13 +1189,31 @@ function buildDayStatusMap(year, month, daysInMonth) {
       continue;
     }
     
-    // 过去日期：检查是否已打卡
+    // 过去日期：检查是否已打卡/请假
     const todayCourses = appState.courses.filter(c => 
       c.schedules.some(s => s.dayOfWeek === dayOfWeek)
     );
     
-    const allChecked = todayCourses.every(c => isCheckedIn(c.id, dateStr));
-    map[dateStr] = allChecked ? 'checked' : 'missed';
+    let allChecked = true;
+    let hasAbsence = false;
+    
+    todayCourses.forEach(c => {
+      const checked = isCheckedIn(c.id, dateStr);
+      const isAbsent = appState.checkins.some(chk => 
+        chk.courseId === c.id && chk.date === dateStr && chk.isAbsence
+      );
+      if (!checked && !isAbsent) allChecked = false;
+      if (isAbsent) hasAbsence = true;
+    });
+    
+    if (allChecked) {
+      map[dateStr] = 'checked';
+    } else if (hasAbsence && !todayCourses.some(c => !isCheckedIn(c.id, dateStr) && !appState.checkins.some(chk => chk.courseId === c.id && chk.date === dateStr && chk.isAbsence))) {
+      // 全部课程要么已打卡要么已请假
+      map[dateStr] = 'absent';
+    } else {
+      map[dateStr] = 'missed';
+    }
   }
   
   return map;
@@ -1229,12 +1247,17 @@ function showDayDetail(dateStr) {
     const schedules = getSchedulesForDay(course, dayOfWeek);
     const timeStr = schedules.map(s => s.time).join(' / ');
     const checked = isCheckedIn(course.id, dateStr);
-    const checkinRecord = appState.checkins.find(c => c.courseId === course.id && c.date === dateStr);
+    const checkinRecord = appState.checkins.find(c => c.courseId === course.id && c.date === dateStr && !c.isAbsence && !c.noteOnly);
+    const absenceRecord = appState.checkins.find(c => c.courseId === course.id && c.date === dateStr && c.isAbsence);
+    const noteRecord = appState.checkins.find(c => c.courseId === course.id && c.date === dateStr && (c.noteOnly || c.isAbsence || c.note));
     
     let statusLabel, statusCls;
     if (checked) {
       statusLabel = '✅ 已打卡';
       statusCls = 'checked';
+    } else if (absenceRecord) {
+      statusLabel = '🏠 请假';
+      statusCls = 'absent';
     } else if (isFuture || isToday) {
       statusLabel = '⏳ 待打卡';
       statusCls = 'pending';
@@ -1243,7 +1266,9 @@ function showDayDetail(dateStr) {
       statusCls = 'missed';
     }
     
-    const note = checkinRecord?.note || '';
+    const note = noteRecord?.note || '';
+    const escapedName = course.name.replace(/'/g, "\\'");
+    const hasEditBtn = !checked && !isFuture;
     
     html += `
       <div class="cal-detail-course">
@@ -1254,9 +1279,9 @@ function showDayDetail(dateStr) {
           ${note ? `<div class="cal-detail-note">📝 ${note}</div>` : ''}
         </div>
         <span class="cal-detail-status ${statusCls}">${statusLabel}</span>
-        ${(!checked && !isFuture) ? 
+        ${(hasEditBtn || absenceRecord) ? 
           `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;flex:0;margin-left:4px;" 
-             onclick="openNotesModal('${course.id}', '${dateStr}', '${course.icon}', '${course.name.replace(/'/g, "\\'")}')">📝</button>` : ''}
+             onclick="openNotesModal('${course.id}', '${dateStr}', '${course.icon}', '${escapedName}')">📝</button>` : ''}
       </div>`;
   });
   
@@ -1274,31 +1299,54 @@ function openNotesModal(courseId, dateStr, icon, name) {
   notesCourseId = courseId;
   notesDateStr = dateStr;
   
-  // 检查是否已有备注
-  const existing = appState.checkins.find(c => c.courseId === courseId && c.date === dateStr);
+  // 检查已有记录
+  const existing = appState.checkins.find(c => c.courseId === courseId && c.date === dateStr && !c.noteOnly);
+  const noteRecord = appState.checkins.find(c => c.courseId === courseId && c.date === dateStr && (c.noteOnly || c.isAbsence));
+  const isAbsence = noteRecord?.isAbsence;
   
   const modal = document.getElementById('modalNotes');
   document.getElementById('notesModalTitle').textContent = `${icon} ${name}`;
-  document.getElementById('notesModalBody').innerHTML = `
-    <div style="text-align:center;padding:8px 0;color:var(--text-muted);">
-      📅 ${formatDate(dateStr)} ${WEEKDAYS_FULL[new Date(dateStr).getDay()]}
-      ${existing ? '<br>已打卡 ✅' : '<br><span style="color:var(--danger);">漏打卡 ❌</span>'}
-    </div>`;
   
-  document.getElementById('inputNote').value = existing?.note || '';
+  let statusHTML = `📅 ${formatDate(dateStr)} ${WEEKDAYS_FULL[new Date(dateStr).getDay()]}`;
+  if (existing) {
+    statusHTML += '<br>已打卡 ✅';
+  } else if (isAbsence) {
+    statusHTML += '<br><span style="color:#F59E0B;">已请假 🏠</span>';
+  } else {
+    statusHTML += '<br><span style="color:var(--danger);">漏打卡 ❌</span>';
+  }
+  
+  document.getElementById('notesModalBody').innerHTML = `
+    <div style="text-align:center;padding:8px 0;color:var(--text-muted);">${statusHTML}</div>`;
+  
+  document.getElementById('inputNote').value = noteRecord?.note || existing?.note || '';
   
   // 调整按钮
   const btnCheckin = document.getElementById('btnCheckinNote');
   const btnSave = document.getElementById('btnSaveNote');
+  const btnAbsence = document.getElementById('btnMarkAbsence');
   
   if (existing) {
     btnCheckin.style.display = 'none';
+    btnAbsence.style.display = 'none';
+    btnSave.textContent = '💾 更新备注';
+    btnSave.style.flex = '1';
+  } else if (isAbsence) {
+    btnCheckin.style.display = '';
+    btnCheckin.textContent = '❌ 取消请假';
+    btnCheckin.style.background = '#F59E0B';
+    btnCheckin.style.color = 'white';
+    btnAbsence.style.display = 'none';
     btnSave.textContent = '💾 更新备注';
     btnSave.style.flex = '1';
   } else {
     btnCheckin.style.display = '';
-    btnSave.textContent = '💾 仅保存备注';
-    btnSave.style.flex = '0.6';
+    btnCheckin.textContent = '✅ 补打卡 +10⭐';
+    btnCheckin.style.background = '';
+    btnCheckin.style.color = '';
+    btnAbsence.style.display = '';
+    btnSave.textContent = '💾 备注';
+    btnSave.style.flex = '0.7';
   }
   
   modal.style.display = 'flex';
@@ -1314,18 +1362,29 @@ function saveNoteOnly() {
   if (!notesCourseId || !notesDateStr) return;
   const note = document.getElementById('inputNote').value.trim();
   
-  const existing = appState.checkins.find(c => c.courseId === notesCourseId && c.date === notesDateStr);
-  if (existing) {
-    existing.note = note || null;
+  // 查找任何已有记录（打卡、备注、请假）
+  const existing = appState.checkins.find(c => 
+    c.courseId === notesCourseId && c.date === notesDateStr && !c.noteOnly
+  );
+  const noteOnly = appState.checkins.find(c => 
+    c.courseId === notesCourseId && c.date === notesDateStr && c.noteOnly
+  );
+  const absence = appState.checkins.find(c => 
+    c.courseId === notesCourseId && c.date === notesDateStr && c.isAbsence
+  );
+  
+  const target = existing || noteOnly || absence;
+  
+  if (target) {
+    target.note = note || null;
   } else {
-    // 只保存备注，不打卡，不加分
     appState.checkins.push({
       id: 'note_' + Date.now(),
       courseId: notesCourseId,
       date: notesDateStr,
       time: '',
       note: note || null,
-      noteOnly: true, // 标记为仅备注
+      noteOnly: true,
     });
   }
   
@@ -1339,9 +1398,26 @@ function doCheckinWithNote() {
   if (!notesCourseId || !notesDateStr) return;
   const note = document.getElementById('inputNote').value.trim();
   
-  // 如果之前有仅备注的记录，先删除
+  // 检查是否是取消请假
+  const absenceRecord = appState.checkins.find(c => 
+    c.courseId === notesCourseId && c.date === notesDateStr && c.isAbsence
+  );
+  
+  if (absenceRecord) {
+    // 取消请假 → 删除请假记录
+    appState.checkins = appState.checkins.filter(c => 
+      !(c.courseId === notesCourseId && c.date === notesDateStr && c.isAbsence)
+    );
+    saveState();
+    closeNotesModal();
+    renderAll();
+    showToast('已取消请假，恢复为待打卡状态');
+    return;
+  }
+  
+  // 正常补打卡
   appState.checkins = appState.checkins.filter(c => 
-    !(c.courseId === notesCourseId && c.date === notesDateStr && c.noteOnly)
+    !(c.courseId === notesCourseId && c.date === notesDateStr && (c.noteOnly || c.isAbsence))
   );
   
   const reached100 = doCheckin(notesCourseId, notesDateStr, note || null);
@@ -1358,6 +1434,32 @@ function doCheckinWithNote() {
   } else {
     showToast(`✅ 补打卡成功！+${POINTS_PER_CHECKIN}⭐`);
   }
+}
+
+// 标记请假
+function markAbsence() {
+  if (!notesCourseId || !notesDateStr) return;
+  const note = document.getElementById('inputNote').value.trim();
+  
+  // 删除旧记录
+  appState.checkins = appState.checkins.filter(c => 
+    !(c.courseId === notesCourseId && c.date === notesDateStr && (c.noteOnly || c.isAbsence))
+  );
+  
+  // 添加请假记录（不加分）
+  appState.checkins.push({
+    id: 'abs_' + Date.now(),
+    courseId: notesCourseId,
+    date: notesDateStr,
+    time: '',
+    note: note || null,
+    isAbsence: true,
+  });
+  
+  saveState();
+  closeNotesModal();
+  renderAll();
+  showToast('🏠 已标记请假');
 }
 
 // --- 全局渲染 ---

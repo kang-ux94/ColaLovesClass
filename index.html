@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.json?v=6">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%23FF6B35'/><text x='96' y='120' text-anchor='middle' font-size='90'>🎒</text></svg>">
   <title>可乐爱上课</title>
-  <link rel="stylesheet" href="css/style.css?v=6">
+  <link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
 
@@ -90,8 +90,8 @@
         <div class="cal-legend">
           <span>🟢 已打卡</span>
           <span>🔴 漏打卡</span>
+          <span>🟡 请假</span>
           <span>⚪ 无课程</span>
-          <span>🔵 今天</span>
         </div>
         <div class="cal-grid" id="calGrid"></div>
         <div id="calDayDetail" class="cal-day-detail" style="display:none;"></div>
@@ -155,7 +155,7 @@
       <span class="alert-dot"></span>
       <span id="forgetMsg">今天还没有打卡哦，记得打卡赚积分！</span>
     </div>
-    <span style="font-size:10px;color:var(--text-muted);margin-left:auto;white-space:nowrap;">v7</span>
+    <span style="font-size:10px;color:var(--text-muted);margin-left:auto;white-space:nowrap;">v8</span>
   </div>
 </div>
 
@@ -308,15 +308,16 @@
     </div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="closeNotesModal()">取消</button>
-      <button class="btn btn-ghost" id="btnSaveNote" style="flex:0.6;">💾 仅保存备注</button>
-      <button class="btn btn-primary" id="btnCheckinNote">✅ 补打卡 +10⭐</button>
+      <button class="btn btn-ghost" id="btnMarkAbsence" style="flex:0.7;background:#FEF3C7;color:#92400E;border-color:#F59E0B;" onclick="markAbsence()">🏠 请假</button>
+      <button class="btn btn-ghost" id="btnSaveNote" style="flex:0.7;">💾 备注</button>
+      <button class="btn btn-primary" id="btnCheckinNote" style="flex:0.8;">✅ 补打卡 +10⭐</button>
     </div>
   </div>
 </div>
 
 <!-- CloudBase SDK -->
 <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/2.0.0/cloudbase.full.js"></script>
-<script src="js/cloud.js?v=7"></script>
-<script src="js/app.js?v=7"></script>
+<script src="js/cloud.js?v=8"></script>
+<script src="js/app.js?v=8"></script>
 </body>
 </html>
