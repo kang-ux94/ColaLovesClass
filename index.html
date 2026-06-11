@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#FF6B35">
+  <meta name="apple-mobile-web-app-title" content="可乐上课">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%23FF6B35'/><text x='96' y='120' text-anchor='middle' font-size='90'>🎒</text></svg>">
+  <title>可乐爱上课</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-container">
+  <!-- Header -->
+  <header class="app-header">
+    <h1 class="app-title">可乐爱上课</h1>
+    <div class="header-actions">
+      <button class="icon-btn" id="btnNotify" title="手机提醒">📱</button>
+      <button class="icon-btn" id="btnSound" title="音效">🔊</button>
+      <button class="icon-btn" id="btnSettings" title="设置">⚙️</button>
+    </div>
+  </header>
+
+  <!-- Tab Navigation -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="home">
+      <span class="tab-icon">🏠</span>首页
+      <span class="badge" id="badgePending" style="display:none">0</span>
+    </button>
+    <button class="tab-btn" data-tab="schedule">
+      <span class="tab-icon">📅</span>课表
+    </button>
+    <button class="tab-btn" data-tab="points">
+      <span class="tab-icon">⭐</span>积分
+    </button>
+    <button class="tab-btn" data-tab="blindbox">
+      <span class="tab-icon">🎁</span>盲盒
+    </button>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    
+    <!-- ===== 首页 Tab ===== -->
+    <section class="tab-content active" id="tab-home">
+      <!-- 今日日期 -->
+      <div class="today-header">
+        <div class="today-label">📆 今天是</div>
+        <div class="today-date" id="todayDate">--</div>
+        <div class="today-weekday" id="todayWeekday">--</div>
+      </div>
+      
+      <!-- 今日课程 -->
+      <div id="todayClasses"></div>
+      
+      <!-- 积分概览 -->
+      <div class="points-bar">
+        <div class="points-bar-header">
+          <span class="points-total">🌟 总积分</span>
+          <span class="points-value" id="totalPoints">0<span class="unit">分</span></span>
+        </div>
+        <div class="round-progress">
+          <div class="round-progress-fill" id="roundProgressFill" style="width:0%"></div>
+        </div>
+        <div class="round-label" id="roundLabel">--</div>
+      </div>
+      
+      <!-- 盲盒入口 -->
+      <button class="blindbox-entry locked" id="blindboxEntry" onclick="switchTab('blindbox')">
+        🎁 抽盲盒
+      </button>
+    </section>
+
+    <!-- ===== 课表 Tab ===== -->
+    <section class="tab-content" id="tab-schedule">
+      <!-- 周历 -->
+      <div class="week-calendar" id="weekCalendar"></div>
+      
+      <!-- 当日课表 -->
+      <div class="day-schedule" id="daySchedule">
+        <div style="text-align:center;color:var(--text-muted);padding:20px;">点击上方日期查看当天课程</div>
+      </div>
+      
+      <!-- 添加课程 -->
+      <button class="add-course-btn" id="btnAddCourse">＋ 添加新课程</button>
+      
+      <!-- 课程列表 -->
+      <div style="margin-top:16px;" id="allCoursesList"></div>
+    </section>
+
+    <!-- ===== 积分 Tab ===== -->
+    <section class="tab-content" id="tab-points">
+      <div id="pointsBreakdown"></div>
+      <div class="card" style="margin-top:12px;">
+        <div class="card-header">
+          <span class="card-title">📋 近期记录</span>
+        </div>
+        <div class="history-list" id="historyList">
+          <div style="text-align:center;color:var(--text-muted);padding:20px;">还没有打卡记录哦～</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 盲盒 Tab ===== -->
+    <section class="tab-content" id="tab-blindbox">
+      <div class="bb-container">
+        <div class="bb-status" id="bbStatus">--</div>
+        <div class="bb-box-wrapper">
+          <div class="bb-box locked" id="bbBox">🎁</div>
+          <div class="bb-hint" id="bbHint">--</div>
+        </div>
+        <!-- 抽奖记录 -->
+        <div class="card" style="margin-top:24px;text-align:left;">
+          <div class="card-header">
+            <span class="card-title">🎉 抽奖记录</span>
+          </div>
+          <div class="history-list" id="bbHistory">
+            <div style="text-align:center;color:var(--text-muted);padding:20px;">还没有抽过盲盒哦～</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Bottom Bar - 防遗忘提醒 -->
+  <div class="bottom-bar" id="bottomBar">
+    <div class="forget-reminder">
+      <span class="alert-dot"></span>
+      <span id="forgetMsg">今天还没有打卡哦，记得打卡赚积分！</span>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add/Edit Course -->
+<div class="modal-overlay" id="modalCourse" style="display:none;">
+  <div class="modal-sheet">
+    <div class="modal-title" id="modalTitle">添加课程</div>
+    <div class="form-group">
+      <label class="form-label">课程名称</label>
+      <input class="form-input" id="inputCourseName" placeholder="例如：街舞课" maxlength="20">
+    </div>
+    <div class="form-group">
+      <label class="form-label">上课星期</label>
+      <div class="day-selector" id="daySelector"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">上课时间</label>
+      <input class="form-input" type="time" id="inputCourseTime" value="16:00">
+    </div>
+    <div class="form-group">
+      <label class="form-label">图标表情</label>
+      <input class="form-input" id="inputCourseIcon" placeholder="🕺" maxlength="2">
+    </div>
+    <div class="form-group">
+      <label class="form-label">主题颜色</label>
+      <div class="color-picker" id="colorPicker"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" id="btnSaveCourse">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Prize Reveal Overlay -->
+<div class="prize-reveal-overlay" id="prizeReveal" style="display:none;">
+  <div class="prize-card">
+    <span class="prize-emoji" id="prizeEmoji">🎁</span>
+    <div class="prize-label" id="prizeName">--</div>
+    <div class="prize-rarity" id="prizeRarity">--</div>
+    <button class="prize-close-btn" onclick="closePrize()">太棒了！</button>
+  </div>
+</div>
+
+<!-- Confetti Canvas -->
+<canvas id="confetti-canvas"></canvas>
+
+<!-- Hidden file input for data import -->
+<input type="file" id="fileImport" accept=".json" style="display:none" onchange="handleImportFile(event)">
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="modalSettings" style="display:none;">
+  <div class="modal-sheet">
+    <div class="modal-title">⚙️ 设置与工具</div>
+    
+    <div class="settings-section">
+      <div class="settings-section-title">📱 手机防遗忘</div>
+      <button class="settings-btn primary" onclick="exportCalendar()">
+        📅 导出课程到手机日历
+      </button>
+      <p class="settings-hint">生成日历文件导入手机，课程前15分钟自动提醒</p>
+      
+      <button class="settings-btn" id="btnInstallPWA" style="display:none" onclick="installPWA()">
+        📲 添加到手机主屏幕
+      </button>
+      <p class="settings-hint" id="pwaHint">像APP一样使用，打开更快</p>
+    </div>
+    
+    <div class="settings-section">
+      <div class="settings-section-title">💾 数据管理</div>
+      <button class="settings-btn" onclick="exportData()">
+        📤 导出数据备份
+      </button>
+      <button class="settings-btn" onclick="document.getElementById('fileImport').click()">
+        📥 导入数据恢复
+      </button>
+      <button class="settings-btn danger" onclick="resetAllData()">
+        🗑️ 清除全部数据
+      </button>
+    </div>
+    
+    <div class="settings-section">
+      <div class="settings-section-title">🔄 跨设备使用</div>
+      <div class="settings-info">
+        <p>📱 手机打卡 → 导出数据备份</p>
+        <p>💻 电脑开发 → 导入数据继续</p>
+        <p>🌐 或部署到云端，多设备访问同一地址</p>
+      </div>
+    </div>
+    
+    <button class="btn btn-ghost" style="width:100%;margin-top:12px;" onclick="closeSettings()">关闭</button>
+  </div>
+</div>
+
+<!-- PWA Install Prompt -->
+<div class="install-banner" id="installBanner" style="display:none;">
+  <div class="install-banner-content">
+    <span style="font-size:32px;">🎒</span>
+    <div style="flex:1;">
+      <div style="font-weight:700;">添加到主屏幕</div>
+      <div style="font-size:12px;color:var(--text-muted);">像APP一样快速打开</div>
+    </div>
+    <button class="btn btn-primary" style="flex:0;padding:8px 16px;font-size:14px;" onclick="installPWA()">添加</button>
+    <button style="background:none;border:none;font-size:18px;cursor:pointer;" onclick="dismissInstall()">✕</button>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
