@@ -10,10 +10,10 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <link rel="manifest" href="manifest.json?v=6">
+  <link rel="manifest" href="manifest.json?v=9">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%23FF6B35'/><text x='96' y='120' text-anchor='middle' font-size='90'>🎒</text></svg>">
   <title>可乐爱上课</title>
-  <link rel="stylesheet" href="css/style.css?v=8">
+  <link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body>
 
@@ -155,7 +155,7 @@
       <span class="alert-dot"></span>
       <span id="forgetMsg">今天还没有打卡哦，记得打卡赚积分！</span>
     </div>
-    <span style="font-size:10px;color:var(--text-muted);margin-left:auto;white-space:nowrap;">v8</span>
+    <span style="font-size:10px;color:var(--text-muted);margin-left:auto;white-space:nowrap;">v9</span>
   </div>
 </div>
 
@@ -173,6 +173,13 @@
         <!-- Dynamic schedule rows -->
       </div>
       <button class="add-schedule-btn" onclick="addScheduleRow()">＋ 添加时间段</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">特殊日期课程 <span style="font-weight:400;color:var(--text-muted);">（按日期，非每周固定）</span></label>
+      <div id="dateScheduleRows">
+        <!-- Dynamic date schedule rows -->
+      </div>
+      <button class="add-schedule-btn" onclick="addDateScheduleRow()">＋ 添加日期</button>
     </div>
     <div class="form-group">
       <label class="form-label">图标表情</label>
@@ -317,7 +324,7 @@
 
 <!-- CloudBase SDK -->
 <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/2.0.0/cloudbase.full.js"></script>
-<script src="js/cloud.js?v=8"></script>
-<script src="js/app.js?v=8"></script>
+<script src="js/cloud.js?v=9"></script>
+<script src="js/app.js?v=9"></script>
 </body>
 </html>
