@@ -941,12 +941,6 @@ function saveCourse() {
   renderAll();
   showToast(editingCourseId ? '课程已更新 ✅' : '课程已添加！初始赠送90分 🎉');
 }
-  
-  saveState();
-  closeModal();
-  renderAll();
-  showToast(editingCourseId ? '课程已更新 ✅' : '课程已添加！初始赠送90分 🎉');
-}
 
 function editCourse(courseId) {
   const course = getCourse(courseId);
@@ -1098,6 +1092,7 @@ function scheduleNotifications() {
         }, delay);
       }
     });
+  });
 }
 
 function updateSettingsUI() {
