@@ -3,7 +3,7 @@
    直接读写云存储文件，无需Token、无需登录
    ============================================ */
 
-const CLOUD_FILE = 'https://636f-colaloveclass-d9gzna4izc7622225-1355124202.tcb.qcloud.la/cola_data.json';
+const CLOUD_FILE = 'https://636f-colaloveclass-d9gzna4izc7622225-1355124202.cos.ap-shanghai.myqcloud.com/cola_data.json';
 
 let cloudReady = true;
 let cloudSyncing = false;
