@@ -76,7 +76,10 @@ function loadState() {
 function saveState() {
   appState._updatedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
-  if (typeof scheduleCloudSave === 'function') scheduleCloudSave();
+  // 延迟云同步（等 DOM 就绪后再启动）
+  if (typeof scheduleCloudSave === 'function' && document.readyState === 'complete') {
+    scheduleCloudSave();
+  }
 }
 
 // --- 工具函数 ---
@@ -1649,6 +1652,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // 初始化云端同步
   initCloud().then(() => {
+    if (!cloudReady) return; // 连接失败，不同步
     loadFromCloud().then(cloudData => {
       if (cloudData) {
         const localTime = appState._updatedAt || 0;

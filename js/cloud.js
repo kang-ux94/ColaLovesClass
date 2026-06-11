@@ -18,8 +18,17 @@ function updateCloudStatus(status, msg) {
 }
 
 async function initCloud() {
-  cloudReady = true;
-  updateCloudStatus('ok', '已连接');
+  updateCloudStatus('connecting', '检测中...');
+  try {
+    // 快速 HEAD 检测 COS 是否可达
+    const resp = await fetch(CLOUD_FILE, { method: 'HEAD', cache: 'no-store' });
+    cloudReady = true;
+    updateCloudStatus('ok', '已连接');
+  } catch (e) {
+    cloudReady = false;
+    updateCloudStatus('error', '无法连接云存储');
+    console.warn('[云端] 连接失败:', e.message);
+  }
 }
 
 function isValidCloudData(data) {
@@ -41,7 +50,7 @@ async function loadFromCloud() {
 }
 
 async function saveToCloud(data) {
-  if (cloudSyncing) return;
+  if (!cloudReady || cloudSyncing) return;
   cloudSyncing = true;
   updateCloudStatus('connecting', '同步中...');
   try {
