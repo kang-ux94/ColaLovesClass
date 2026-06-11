@@ -22,12 +22,17 @@ async function initCloud() {
   updateCloudStatus('ok', '已连接');
 }
 
+function isValidCloudData(data) {
+  // 必须有课程列表（即使是空数组也行）
+  return data && Array.isArray(data.courses);
+}
+
 async function loadFromCloud() {
   try {
     const resp = await fetch(CLOUD_FILE + '?t=' + Date.now(), { cache: 'no-store' });
     if (!resp.ok) return null;
     const data = await resp.json();
-    if (data._updatedAt !== undefined) return data;
+    if (isValidCloudData(data)) return data;
     return null;
   } catch (e) {
     console.warn('[云端] 读取失败:', e.message);
@@ -49,10 +54,12 @@ async function saveToCloud(data) {
     if (resp.ok) {
       updateCloudStatus('ok', '已连接');
     } else {
-      console.warn('[云端] 保存失败:', resp.status);
+      console.warn('[云端] 保存失败:', resp.status, resp.statusText);
+      updateCloudStatus('error', '保存失败 HTTP ' + resp.status);
     }
   } catch (e) {
     console.warn('[云端] 保存失败:', e.message);
+    updateCloudStatus('error', '网络异常');
   }
   cloudSyncing = false;
 }

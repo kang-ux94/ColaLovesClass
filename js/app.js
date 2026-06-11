@@ -74,6 +74,7 @@ function loadState() {
 }
 
 function saveState() {
+  appState._updatedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
   if (typeof scheduleCloudSave === 'function') scheduleCloudSave();
 }
@@ -1652,6 +1653,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (cloudData) {
         const localTime = appState._updatedAt || 0;
         const cloudTime = cloudData._updatedAt || 0;
+        // 保护：云端数据必须包含有效课程列表才接受
+        if (!Array.isArray(cloudData.courses)) {
+          console.log('[云端] 数据格式无效，忽略');
+          return;
+        }
         if (cloudTime > localTime) {
           delete cloudData._updatedAt;
           const localSettings = appState.settings;
@@ -1659,15 +1665,15 @@ document.addEventListener('DOMContentLoaded', () => {
           appState.settings = { ...appState.settings, ...localSettings };
           saveState();
           renderAll();
-          console.log('[CloudBase] 已从云端同步数据');
+          console.log('[云端] 已从云端同步', cloudData.courses.length, '门课程');
         } else if (localTime > cloudTime) {
           scheduleCloudSave();
-          console.log('[CloudBase] 本地数据更新，已推送');
+          console.log('[云端] 本地更新，已推送');
         }
       } else {
         if (appState.courses.length > 0 || appState.checkins.length > 0) {
           scheduleCloudSave();
-          console.log('[CloudBase] 首次推送本地数据');
+          console.log('[云端] 首次推送本地数据');
         }
       }
     });
