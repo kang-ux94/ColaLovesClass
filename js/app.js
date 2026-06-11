@@ -1771,9 +1771,17 @@ function exportCalendar() {
     'X-WR-CALNAME:可乐爱上课 - 课程提醒',
   ];
   
+  const now = new Date();
+  
+  // 两个月后的日期（ICS UNTIL 格式）
+  const twoMonthsLater = new Date(now);
+  twoMonthsLater.setMonth(twoMonthsLater.getMonth() + 2);
+  const untilStr = twoMonthsLater.getFullYear() +
+    String(twoMonthsLater.getMonth() + 1).padStart(2, '0') +
+    String(twoMonthsLater.getDate()).padStart(2, '0') + 'T235959';
+  
   // 为每门课的每个时间段生成重复事件
   appState.courses.forEach(course => {
-    const now = new Date();
     
     // 格式化为ICS日期
     const formatICSDate = (d, hour, min) => {
@@ -1794,9 +1802,7 @@ function exportCalendar() {
       }
       
       const dtStart = formatICSDate(startDate, h, m);
-      const endH = h;
-      const endM = m + 60;
-      const dtEnd = formatICSDate(startDate, endH, endM);
+      const dtEnd = formatICSDate(startDate, h, m + 60);
       
       const uid = `cola-${course.id}-${schedule.dayOfWeek}-${schedule.time.replace(':', '')}@colalovesclass`;
       
@@ -1807,7 +1813,7 @@ function exportCalendar() {
         `DTEND:${dtEnd}`,
         `SUMMARY:${course.icon} ${course.name}`,
         `DESCRIPTION:🎒 可乐爱上课提醒\\n课程：${course.name}\\n时间：${schedule.time}\\n记得打卡赚积分哦！`,
-        'RRULE:FREQ=WEEKLY;COUNT=52',
+        `RRULE:FREQ=WEEKLY;UNTIL=${untilStr}`,
         'BEGIN:VALARM',
         'TRIGGER:-PT15M',
         'ACTION:DISPLAY',
@@ -1817,11 +1823,12 @@ function exportCalendar() {
       );
     });
     
-    // 按日期课程（一次性事件，不重复）
+    // 按日期课程（仅导出未来两个月内的）
     if (course.dateSchedules) {
       course.dateSchedules.forEach(ds => {
-        const [h, m] = ds.time.split(':').map(Number);
         const d = new Date(ds.date);
+        if (d < now || d > twoMonthsLater) return; // 跳过过去和超出两个月的
+        const [h, m] = ds.time.split(':').map(Number);
         const dtStart = formatICSDate(d, h, m);
         const dtEnd = formatICSDate(d, h, m + 60);
         const uid = `cola-${course.id}-date-${ds.date}-${ds.time.replace(':', '')}@colalovesclass`;
