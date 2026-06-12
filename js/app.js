@@ -79,11 +79,9 @@ let editingCourseId = null;
 
 // 通行证通过后回调（localData: 本地或迁移的旧数据）
 function onGatePassed(localData) {
-  // 如果有数据则加载，否则用空状态
+  // localData 有数据时用profile专属数据，否则保留loadState()已有的数据
   if (localData && localData.courses) {
     appState = localData;
-  } else {
-    appState = getDefaultState();
   }
   saveState();
   renderAll();
@@ -119,38 +117,6 @@ function getDefaultState() {
     prizePool: JSON.parse(JSON.stringify(DEFAULT_PRIZE_POOL)),
     settings: { notifications: false, sound: true }
   };
-}
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const state = JSON.parse(raw);
-      // 迁移旧数据格式: course.dayOfWeek + course.time → course.schedules
-      if (state.courses) {
-        state.courses = state.courses.map(c => {
-          if (!c.schedules) {
-            return {
-              ...c,
-              schedules: [{ dayOfWeek: c.dayOfWeek ?? 1, time: c.time ?? '16:00' }],
-            };
-          }
-          return c;
-        });
-      }
-      return state;
-    }
-  } catch (e) { /* ignore */ }
-  return getDefaultState();
-}
-
-function saveState() {
-  appState._updatedAt = Date.now();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
-  // 延迟云同步（等 DOM 就绪后再启动）
-  if (typeof scheduleCloudSave === 'function' && document.readyState === 'complete') {
-    scheduleCloudSave();
-  }
 }
 
 // --- 工具函数 ---
@@ -1848,7 +1814,6 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // 初始化
   updateSettingsUI();
-  renderAll();
   
   // 如果开启了通知，安排提醒
   if (appState.settings.notifications) {
@@ -1924,7 +1889,7 @@ function listenPWAInstall() {
   });
   
   // 如果已安装为PWA，隐藏提示
-  if (window.matchMedia('(display-mode: standalone)').matches) {
+  if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
     document.getElementById('installBanner').style.display = 'none';
     document.getElementById('btnInstallPWA').style.display = 'none';
   }
