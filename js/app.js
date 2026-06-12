@@ -36,8 +36,79 @@ function getPrizePool() {
 }
 
 // --- 状态管理 ---
+function loadState() {
+  // 尝试从 profile 专属 key 加载
+  const key = localStorage.getItem('cola_active_key');
+  if (key) {
+    const data = loadProfileData(key);
+    if (data && data.courses) return data;
+  }
+  // 降级：从通用 key 加载
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const state = JSON.parse(raw);
+      if (state.courses) {
+        state.courses = state.courses.map(c => {
+          if (!c.schedules) {
+            return { ...c, schedules: [{ dayOfWeek: c.dayOfWeek ?? 1, time: c.time ?? '16:00' }] };
+          }
+          return c;
+        });
+      }
+      return state;
+    }
+  } catch (e) { /* ignore */ }
+  return getDefaultState();
+}
+
+function saveState() {
+  appState._updatedAt = Date.now();
+  // 保存到 profile 专属 key
+  const k = localStorage.getItem('cola_active_key');
+  if (k) localStorage.setItem('cola_data_' + k, JSON.stringify(appState));
+  // 也存到通用 key 作为兜底
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+  if (typeof scheduleCloudSave === 'function' && document.readyState === 'complete') {
+    scheduleCloudSave();
+  }
+}
+
 let appState = loadState();
 let editingCourseId = null;
+
+// 通行证通过后回调（localData: 本地或迁移的旧数据）
+function onGatePassed(localData) {
+  // 如果有数据则加载，否则用空状态
+  if (localData && localData.courses) {
+    appState = localData;
+  } else {
+    appState = getDefaultState();
+  }
+  saveState();
+  renderAll();
+  
+  initCloud();
+  loadFromCloud().then(cloudData => {
+    if (cloudData && isValidCloudData(cloudData)) {
+      const localTime = appState._updatedAt || 0;
+      const cloudTime = cloudData._updatedAt || 0;
+      if (cloudTime > localTime) {
+        delete cloudData._updatedAt;
+        const s = appState.settings;
+        appState = cloudData;
+        appState.settings = { ...appState.settings, ...s };
+        saveState();
+        renderAll();
+      } else if (localTime > cloudTime) {
+        scheduleCloudSave();
+      }
+    } else if (appState.courses.length > 0 || appState.checkins.length > 0) {
+      scheduleCloudSave();
+    }
+    updateProfileUI();
+  }).catch(() => {});
+}
 
 function getDefaultState() {
   return {
@@ -684,10 +755,127 @@ function closePrize() {
   renderAll();
 }
 
-// --- 撒花特效 ---
+// =============================================
+//  浮动粒子背景
+// =============================================
+let particlesAnimationId = null;
+const particlesCanvas = document.getElementById('particles-canvas');
+const pctx = particlesCanvas.getContext('2d');
+let bgParticles = [];
+
+// Canvas roundRect polyfill
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (typeof r === 'number') r = { tl: r, tr: r, br: r, bl: r };
+    this.beginPath();
+    this.moveTo(x + r.tl, y);
+    this.lineTo(x + w - r.tr, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+    this.lineTo(x + w, y + h - r.br);
+    this.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+    this.lineTo(x + r.bl, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+    this.lineTo(x, y + r.tl);
+    this.quadraticCurveTo(x, y, x + r.tl, y);
+    this.closePath();
+  };
+}
+
+function resizeParticles() {
+  particlesCanvas.width = window.innerWidth;
+  particlesCanvas.height = window.innerHeight;
+}
+
+function initParticles() {
+  resizeParticles();
+  bgParticles = [];
+  const count = Math.floor((particlesCanvas.width * particlesCanvas.height) / 18000);
+  for (let i = 0; i < count; i++) {
+    bgParticles.push(createBgParticle());
+  }
+  animateBgParticles();
+}
+
+function createBgParticle() {
+  const shapes = ['circle', 'star', 'diamond'];
+  return {
+    x: Math.random() * particlesCanvas.width,
+    y: Math.random() * particlesCanvas.height,
+    size: 2 + Math.random() * 4,
+    shape: shapes[Math.floor(Math.random() * shapes.length)],
+    color: ['rgba(255,107,53,0.2)', 'rgba(78,205,196,0.15)', 'rgba(255,230,109,0.2)', 
+            'rgba(167,139,250,0.15)', 'rgba(244,114,182,0.12)'][Math.floor(Math.random() * 5)],
+    vx: (Math.random() - 0.5) * 0.4,
+    vy: -0.2 - Math.random() * 0.4,
+    opacity: 0.3 + Math.random() * 0.4,
+    pulseSpeed: 0.02 + Math.random() * 0.03,
+    pulseOffset: Math.random() * Math.PI * 2,
+  };
+}
+
+function animateBgParticles() {
+  pctx.clearRect(0, 0, particlesCanvas.width, particlesCanvas.height);
+  
+  bgParticles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    
+    // 循环边界
+    if (p.y < -20) { p.y = particlesCanvas.height + 10; p.x = Math.random() * particlesCanvas.width; }
+    if (p.x < -20) p.x = particlesCanvas.width + 10;
+    if (p.x > particlesCanvas.width + 20) p.x = -10;
+    
+    const pulse = Math.sin(Date.now() * p.pulseSpeed + p.pulseOffset) * 0.3 + 0.7;
+    const alpha = p.opacity * pulse;
+    
+    pctx.save();
+    pctx.globalAlpha = alpha;
+    pctx.fillStyle = p.color;
+    pctx.translate(p.x, p.y);
+    
+    if (p.shape === 'circle') {
+      pctx.beginPath();
+      pctx.arc(0, 0, p.size, 0, Math.PI * 2);
+      pctx.fill();
+    } else if (p.shape === 'star') {
+      drawStar(pctx, 0, 0, p.size, p.size * 0.4, 5);
+    } else {
+      pctx.beginPath();
+      pctx.moveTo(0, -p.size);
+      pctx.lineTo(p.size, 0);
+      pctx.lineTo(0, p.size);
+      pctx.lineTo(-p.size, 0);
+      pctx.closePath();
+      pctx.fill();
+    }
+    
+    pctx.restore();
+  });
+  
+  particlesAnimationId = requestAnimationFrame(animateBgParticles);
+}
+
+function drawStar(ctx, cx, cy, outerR, innerR, points) {
+  const step = Math.PI / points;
+  ctx.beginPath();
+  for (let i = 0; i < 2 * points; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const angle = i * step - Math.PI / 2;
+    const x = cx + r * Math.cos(angle);
+    const y = cy + r * Math.sin(angle);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+// =============================================
+//  撒花特效 (升级版：彩色纸片 + emoji)
+// =============================================
 let confettiAnimationId = null;
 const confettiCanvas = document.getElementById('confetti-canvas');
-const ctx = confettiCanvas.getContext('2d');
+const cctx = confettiCanvas.getContext('2d');
 let confettiParticles = [];
 
 function resizeConfetti() {
@@ -698,56 +886,78 @@ function resizeConfetti() {
 function createConfettiParticle() {
   const colors = ['#FF6B35', '#4ECDC4', '#FFE66D', '#F472B6', '#A78BFA', 
                    '#60A5FA', '#6BCB77', '#FFD700', '#FF4444', '#00E5FF'];
+  const emojis = ['⭐', '🌟', '✨', '💫', '🎉', '🎊', '💎', '🎀', '🌈'];
+  const type = Math.random() < 0.25 ? 'emoji' : 'rect';
+  
   return {
     x: Math.random() * confettiCanvas.width,
-    y: -20 - Math.random() * 100,
-    w: 6 + Math.random() * 8,
-    h: 4 + Math.random() * 6,
+    y: -20 - Math.random() * 120,
+    type: type,
+    w: 6 + Math.random() * 10,
+    h: 4 + Math.random() * 7,
+    emoji: type === 'emoji' ? emojis[Math.floor(Math.random() * emojis.length)] : null,
+    emojiSize: 16 + Math.random() * 20,
     color: colors[Math.floor(Math.random() * colors.length)],
-    vx: (Math.random() - 0.5) * 4,
-    vy: 2 + Math.random() * 4,
+    vx: (Math.random() - 0.5) * 5,
+    vy: 2 + Math.random() * 5,
     rotation: Math.random() * 360,
-    rotationSpeed: (Math.random() - 0.5) * 10,
+    rotationSpeed: (Math.random() - 0.5) * 12,
     opacity: 1,
+    wobble: Math.random() * Math.PI * 2,
+    wobbleSpeed: 0.03 + Math.random() * 0.05,
   };
 }
 
 function launchConfetti() {
   resizeConfetti();
   confettiParticles = [];
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 150; i++) {
     confettiParticles.push(createConfettiParticle());
   }
   animateConfetti();
 }
 
 function animateConfetti() {
-  ctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+  cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
   
   let alive = false;
   confettiParticles.forEach(p => {
-    p.x += p.vx;
+    p.x += p.vx + Math.sin(p.wobble) * 1.5;
     p.y += p.vy;
     p.rotation += p.rotationSpeed;
-    p.vy += 0.05;
-    p.opacity -= 0.002;
+    p.vy += 0.04;
+    p.wobble += p.wobbleSpeed;
+    p.opacity -= 0.0015;
     
-    if (p.opacity > 0 && p.y < confettiCanvas.height + 50) {
+    if (p.opacity > 0 && p.y < confettiCanvas.height + 60) {
       alive = true;
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate((p.rotation * Math.PI) / 180);
-      ctx.globalAlpha = p.opacity;
-      ctx.fillStyle = p.color;
-      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-      ctx.restore();
+      cctx.save();
+      cctx.translate(p.x, p.y);
+      cctx.rotate((p.rotation * Math.PI) / 180);
+      cctx.globalAlpha = p.opacity;
+      
+      if (p.type === 'emoji') {
+        cctx.font = `${p.emojiSize}px sans-serif`;
+        cctx.textAlign = 'center';
+        cctx.textBaseline = 'middle';
+        cctx.fillText(p.emoji, 0, 0);
+      } else {
+        // 带圆角的彩色纸片
+        const w = p.w, h = p.h;
+        cctx.fillStyle = p.color;
+        cctx.beginPath();
+        cctx.roundRect(-w/2, -h/2, w, h, 2);
+        cctx.fill();
+      }
+      
+      cctx.restore();
     }
   });
   
   if (alive) {
     confettiAnimationId = requestAnimationFrame(animateConfetti);
   } else {
-    ctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
   }
 }
 
@@ -757,7 +967,7 @@ function stopConfetti() {
     confettiAnimationId = null;
   }
   confettiParticles = [];
-  ctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+  cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
 }
 
 // --- 音效（使用 Web Audio API）---
@@ -1551,6 +1761,7 @@ function markAbsence() {
 
 // --- 全局渲染 ---
 function renderAll() {
+  updateProfileUI();
   renderTodayClasses();
   renderPointsBar();
   renderCalendar();
@@ -1627,7 +1838,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // 窗口大小变化
-  window.addEventListener('resize', resizeConfetti);
+  window.addEventListener('resize', () => {
+    resizeConfetti();
+    resizeParticles();
+  });
+  
+  // 初始化粒子背景
+  initParticles();
   
   // 初始化
   updateSettingsUI();
@@ -1650,29 +1867,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // 监听 PWA 安装事件
   listenPWAInstall();
   
-  // 初始化云端同步
-  initCloud();
-  loadFromCloud().then(cloudData => {
-    if (cloudData && isValidCloudData(cloudData)) {
-      const localTime = appState._updatedAt || 0;
-      const cloudTime = cloudData._updatedAt || 0;
-      if (cloudTime > localTime) {
-        delete cloudData._updatedAt;
-        const localSettings = appState.settings;
-        appState = cloudData;
-        appState.settings = { ...appState.settings, ...localSettings };
-        saveState();
-        renderAll();
-        console.log('[云端] 已从云端同步', cloudData.courses?.length || 0, '门课程');
-      } else if (localTime > cloudTime) {
-        scheduleCloudSave();
-        console.log('[云端] 本地更新，已推送');
-      }
-    } else if (appState.courses.length > 0 || appState.checkins.length > 0) {
-      scheduleCloudSave();
-      console.log('[云端] 首次推送本地数据');
-    }
-  }).catch(() => {});
+  // 初始化门禁和云端同步
+  initGate();
 });
 
 // =============================================
@@ -1964,18 +2160,51 @@ function openSettings() {
   }
 }
 
+// ========== Profile UI ==========
+function updateProfileUI() {
+  const profile = getCurrentProfile();
+  const header = document.getElementById('headerProfile');
+  const nameEl = document.getElementById('headerProfileName');
+  if (profile) {
+    header.style.display = 'inline-flex';
+    nameEl.textContent = profile.name || '小朋友';
+    renderProfileDropdown();
+  } else {
+    header.style.display = 'none';
+  }
+}
+
+function renderProfileDropdown() {
+  const profiles = getProfiles();
+  const list = document.getElementById('profileDropdownList');
+  const currentKey = localStorage.getItem('cola_active_key');
+  
+  let html = '';
+  Object.entries(profiles).forEach(([key, p]) => {
+    const isActive = key === currentKey;
+    html += '<div class="profile-dropdown-item' + (isActive ? ' active' : '') + '" onclick="event.stopPropagation();switchProfile(\'' + key + '\')">' + p.name + (isActive ? ' ●' : '') + '<span class="delete-icon" onclick="event.stopPropagation();deleteProfile(\'' + key + '\')">✕</span></div>';
+  });
+  list.innerHTML = html;
+}
+
+function toggleProfileMenu(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('profileDropdown');
+  const show = dd.style.display === 'block';
+  dd.style.display = show ? 'none' : 'block';
+  if (!show) {
+    renderProfileDropdown();
+    setTimeout(function() { document.addEventListener('click', hideProfileMenu, { once: true }); }, 0);
+  }
+}
+
+function hideProfileMenu() {
+  document.getElementById('profileDropdown').style.display = 'none';
+}
+
 function closeSettings() {
   document.getElementById('modalSettings').style.display = 'none';
 }
-
-// 同步云存储 UI
-function closeSettings() {
-  document.getElementById('modalSettings').style.display = 'none';
-}
-
-// =============================================
-//  奖品池管理
-// =============================================
 
 // =============================================
 //  奖品池管理
