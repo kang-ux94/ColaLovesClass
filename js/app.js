@@ -77,6 +77,19 @@ function saveState() {
 let appState = loadState();
 let editingCourseId = null;
 
+// 从云端数据同步 profile 名字到本地
+function syncProfileNameFromCloud(cloudData) {
+  if (!cloudData || !cloudData._profileName) return;
+  const key = localStorage.getItem('cola_active_key');
+  if (!key) return;
+  const profiles = JSON.parse(localStorage.getItem('cola_profiles') || '{}');
+  if (profiles[key] && profiles[key].name !== cloudData._profileName) {
+    profiles[key].name = cloudData._profileName;
+    localStorage.setItem('cola_profiles', JSON.stringify(profiles));
+    console.log('[云端] 同步名字:', cloudData._profileName);
+  }
+}
+
 // 通行证通过后回调（localData: 本地或迁移的旧数据，也可能是云端拉到的数据）
 function onGatePassed(localData) {
   // localData 有数据时用传入的数据，否则保留loadState()已有的数据
@@ -112,7 +125,8 @@ function onGatePassed(localData) {
         // 本地更新 → 上传本地数据到云端
         scheduleCloudSave();
       }
-      // 如果时间戳相同，两边数据一致，无需操作
+      // 始终从云端同步名字到本地 profile
+      syncProfileNameFromCloud(cloudData);
     } else if (appState.courses.length > 0 || appState.checkins.length > 0) {
       // 云端无有效数据但本地有 → 上传到云端
       scheduleCloudSave();
