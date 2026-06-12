@@ -106,18 +106,51 @@ function enterGateStep1() {
     document.getElementById('gate-overlay').style.display = 'none';
     const data = loadProfileData(key);
     if (typeof onGatePassed === 'function') onGatePassed(data || null);
-  } else {
-    // 新通行证 → 第2步：输入名字
-    document.getElementById('gate-step1').style.display = 'none';
-    document.getElementById('gate-btn1').style.display = 'none';
-    document.getElementById('gate-step2').style.display = '';
-    document.getElementById('gate-btn2').style.display = '';
-    document.getElementById('gate-name-input').focus();
-    document.getElementById('gate-name-input').dataset.key = key;
+    return;
   }
+  
+  // 本地无 profile → 先查云端是否已存在（别人用这个通行证创建过了）
+  checkCloudExists(key).then(async exists => {
+    if (exists) {
+      // 云端已有数据 → 尝试读取名字
+      let name = '小朋友';
+      try {
+        const resp = await fetch(COS_BASE + 'cola_data_' + key + '.json?' + Date.now());
+        if (resp.ok) {
+          const cd = await resp.json();
+          if (cd._profileName) name = cd._profileName;
+        }
+      } catch(e) {}
+      
+      const profiles = getProfiles();
+      profiles[key] = { name, icon: '🎒' };
+      saveProfiles(profiles);
+      localStorage.setItem(ACTIVE_KEY, key);
+      setCloudKey(key);
+      document.getElementById('gate-overlay').style.display = 'none';
+      if (typeof onGatePassed === 'function') onGatePassed(null);
+    } else {
+      // 全新通行证 → 第2步：输入名字
+      document.getElementById('gate-step1').style.display = 'none';
+      document.getElementById('gate-btn1').style.display = 'none';
+      document.getElementById('gate-step2').style.display = '';
+      document.getElementById('gate-btn2').style.display = '';
+      document.getElementById('gate-name-input').focus();
+      document.getElementById('gate-name-input').dataset.key = key;
+    }
+  });
 }
 
-function enterGateStep2() {
+// 检测云端是否已有该通行证的数据
+async function checkCloudExists(key) {
+  try {
+    const url = COS_BASE + 'cola_data_' + key + '.json?' + Date.now();
+    const resp = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+    return resp.ok;
+  } catch { return false; }
+}
+
+async function enterGateStep2() {
   const name = document.getElementById('gate-name-input').value.trim();
   const key = document.getElementById('gate-name-input').dataset.key;
   const err = document.getElementById('gate-name-error');
@@ -128,6 +161,15 @@ function enterGateStep2() {
   const profiles = getProfiles();
   profiles[key] = { name, icon: '🎒' };
   saveProfiles(profiles);
+  
+  // 向云端写入初始空数据（含名字），让其他设备能检测到
+  try {
+    await fetch(COS_BASE + 'cola_data_' + key + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courses: [], checkins: [], _updatedAt: Date.now(), _profileName: name }),
+    });
+  } catch(e) {}
   
   localStorage.setItem(ACTIVE_KEY, key);
   setCloudKey(key);

@@ -753,13 +753,14 @@ function resizeParticles() {
 }
 
 function initParticles() {
+  if (document.getElementById('gate-overlay').style.display === 'flex') return; // 门禁期间不启动
   resizeParticles();
   bgParticles = [];
-  const count = Math.floor((particlesCanvas.width * particlesCanvas.height) / 18000);
+  const count = Math.min(Math.floor((particlesCanvas.width * particlesCanvas.height) / 30000), 30);
   for (let i = 0; i < count; i++) {
     bgParticles.push(createBgParticle());
   }
-  animateBgParticles();
+  if (bgParticles.length > 0) animateBgParticles();
 }
 
 function createBgParticle() {
