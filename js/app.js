@@ -753,10 +753,11 @@ function resizeParticles() {
 }
 
 function initParticles() {
-  if (document.getElementById('gate-overlay').style.display === 'flex') return; // 门禁期间不启动
+  // 移动端或弹窗模式直接跳过粒子
+  if (window.innerWidth < 768 || document.getElementById('gate-overlay').style.display === 'flex') return;
   resizeParticles();
   bgParticles = [];
-  const count = Math.min(Math.floor((particlesCanvas.width * particlesCanvas.height) / 30000), 30);
+  const count = Math.min(Math.floor((particlesCanvas.width * particlesCanvas.height) / 50000), 15);
   for (let i = 0; i < count; i++) {
     bgParticles.push(createBgParticle());
   }
@@ -787,18 +788,18 @@ function animateBgParticles() {
   if (document.getElementById('modalSettings').style.display === 'flex') { particlesAnimationId = requestAnimationFrame(animateBgParticles); return; }
   if (document.getElementById('modalCourse').style.display === 'flex') { particlesAnimationId = requestAnimationFrame(animateBgParticles); return; }
   
+  const now = Date.now();
   pctx.clearRect(0, 0, particlesCanvas.width, particlesCanvas.height);
   
   bgParticles.forEach(p => {
     p.x += p.vx;
     p.y += p.vy;
     
-    // 循环边界
     if (p.y < -20) { p.y = particlesCanvas.height + 10; p.x = Math.random() * particlesCanvas.width; }
     if (p.x < -20) p.x = particlesCanvas.width + 10;
     if (p.x > particlesCanvas.width + 20) p.x = -10;
     
-    const pulse = Math.sin(Date.now() * p.pulseSpeed + p.pulseOffset) * 0.3 + 0.7;
+    const pulse = Math.sin(now * p.pulseSpeed + p.pulseOffset) * 0.3 + 0.7;
     const alpha = p.opacity * pulse;
     
     pctx.save();
@@ -1817,7 +1818,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // 初始化粒子背景
-  initParticles();
+  if (window.innerWidth >= 768) initParticles();
   
   // 初始化
   updateSettingsUI();
