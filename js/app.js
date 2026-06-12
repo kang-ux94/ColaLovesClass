@@ -781,6 +781,12 @@ function createBgParticle() {
 }
 
 function animateBgParticles() {
+  // 暂停：页面隐藏、门禁、设置、弹窗打开时跳过绘制
+  if (document.hidden) { particlesAnimationId = requestAnimationFrame(animateBgParticles); return; }
+  if (document.getElementById('gate-overlay').style.display === 'flex') { particlesAnimationId = requestAnimationFrame(animateBgParticles); return; }
+  if (document.getElementById('modalSettings').style.display === 'flex') { particlesAnimationId = requestAnimationFrame(animateBgParticles); return; }
+  if (document.getElementById('modalCourse').style.display === 'flex') { particlesAnimationId = requestAnimationFrame(animateBgParticles); return; }
+  
   pctx.clearRect(0, 0, particlesCanvas.width, particlesCanvas.height);
   
   bgParticles.forEach(p => {
