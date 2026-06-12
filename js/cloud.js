@@ -335,7 +335,8 @@ async function saveToCloud(data) {
   updateCloudStatus('connecting', '同步中...');
   try {
     const profile = getCurrentProfile();
-    const payload = JSON.stringify({ ...data, _updatedAt: Date.now(), _profileName: profile?.name || undefined });
+    const profileName = profile?.name;
+    const payload = JSON.stringify({ ...data, _updatedAt: Date.now(), ...(profileName ? { _profileName: profileName } : {}) });
     const resp = await fetch(cloudFile, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: payload });
     if (resp.ok) {
       cloudReady = true;
