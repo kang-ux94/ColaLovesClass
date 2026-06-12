@@ -41,7 +41,7 @@ function loadState() {
   const key = localStorage.getItem('cola_active_key');
   if (key) {
     const data = loadProfileData(key);
-    if (data && data.courses) return data;
+    if (data && data.courses && data.courses.length > 0) return data;
   }
   // 降级：从通用 key 加载
   try {
