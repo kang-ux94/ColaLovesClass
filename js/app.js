@@ -2119,6 +2119,8 @@ function resetAllData() {
 //  设置面板
 // =============================================
 function openSettings() {
+  // 暂停背景动画减少GPU负担
+  document.getElementById('particles-canvas').style.display = 'none';
   document.getElementById('modalSettings').style.display = 'flex';
   renderPrizeListSettings();
   // iOS Safari PWA安装提示
@@ -2177,6 +2179,8 @@ function hideProfileMenu() {
 
 function closeSettings() {
   document.getElementById('modalSettings').style.display = 'none';
+  // 恢复背景动画
+  document.getElementById('particles-canvas').style.display = '';
 }
 
 // =============================================
