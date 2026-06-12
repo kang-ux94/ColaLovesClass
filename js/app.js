@@ -77,13 +77,22 @@ function saveState() {
 let appState = loadState();
 let editingCourseId = null;
 
-// 通行证通过后回调（localData: 本地或迁移的旧数据）
+// 通行证通过后回调（localData: 本地或迁移的旧数据，也可能是云端拉到的数据）
 function onGatePassed(localData) {
-  // localData 有数据时用profile专属数据，否则保留loadState()已有的数据
+  // localData 有数据时用传入的数据，否则保留loadState()已有的数据
   if (localData && localData.courses) {
     appState = localData;
+    // 保留原始 _updatedAt（云端数据自带的），不要用 Date.now() 覆盖
+    // 这样后续 loadFromCloud 对比时间戳时不会误判
+    const origTime = localData._updatedAt;
+    saveState();
+    if (origTime) appState._updatedAt = origTime; // saveState 会盖 Date.now()，改回来
+  } else {
+    // 无传入数据时，只在本地有实际内容才 saveState（避免给空数据盖时间戳导致后续云同步误判）
+    if (appState.courses.length > 0 || appState.checkins.length > 0) {
+      saveState();
+    }
   }
-  saveState();
   renderAll();
   
   initCloud();
@@ -91,6 +100,7 @@ function onGatePassed(localData) {
     if (cloudData && isValidCloudData(cloudData)) {
       const localTime = appState._updatedAt || 0;
       const cloudTime = cloudData._updatedAt || 0;
+      // 云端更新 → 用云端数据覆盖本地
       if (cloudTime > localTime) {
         delete cloudData._updatedAt;
         const s = appState.settings;
@@ -99,9 +109,12 @@ function onGatePassed(localData) {
         saveState();
         renderAll();
       } else if (localTime > cloudTime) {
+        // 本地更新 → 上传本地数据到云端
         scheduleCloudSave();
       }
+      // 如果时间戳相同，两边数据一致，无需操作
     } else if (appState.courses.length > 0 || appState.checkins.length > 0) {
+      // 云端无有效数据但本地有 → 上传到云端
       scheduleCloudSave();
     }
     updateProfileUI();
@@ -1842,6 +1855,19 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // 初始化门禁和云端同步
   initGate();
+  
+  // 页面切到后台或关闭前，立即同步到云端
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      if (typeof saveCurrentProfile === 'function') saveCurrentProfile();
+      if (typeof cloudFile !== 'undefined' && cloudFile && typeof appState !== 'undefined' && appState && appState.courses.length > 0) {
+        if (typeof saveToCloud === 'function' && !cloudSyncing) saveToCloud(appState);
+      }
+    }
+  });
+  window.addEventListener('pagehide', () => {
+    if (typeof saveCurrentProfile === 'function') saveCurrentProfile();
+  });
 });
 
 // =============================================

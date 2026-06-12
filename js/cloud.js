@@ -112,12 +112,14 @@ function enterGateStep1() {
   // 本地无 profile → 先查云端是否已存在（别人用这个通行证创建过了）
   checkCloudExists(key).then(async exists => {
     if (exists) {
-      // 云端已有数据 → 尝试读取名字
+      // 云端已有数据 → 读取完整数据（名字+课程等）
       let name = '小朋友';
+      let cloudData = null;
       try {
         const resp = await fetch(COS_BASE + 'cola_data_' + key + '.json?' + Date.now());
         if (resp.ok) {
           const cd = await resp.json();
+          cloudData = cd;
           if (cd._profileName) name = cd._profileName;
         }
       } catch(e) {}
@@ -128,7 +130,8 @@ function enterGateStep1() {
       localStorage.setItem(ACTIVE_KEY, key);
       setCloudKey(key);
       document.getElementById('gate-overlay').style.display = 'none';
-      if (typeof onGatePassed === 'function') onGatePassed(null);
+      // 传完整云端数据给 onGatePassed，避免先 saveState 盖时间戳导致后续 loadFromCloud 误判
+      if (typeof onGatePassed === 'function') onGatePassed(cloudData || null);
     } else {
       // 全新通行证 → 第2步：输入名字
       document.getElementById('gate-step1').style.display = 'none';
@@ -320,14 +323,31 @@ async function loadFromCloud() {
 
 async function saveToCloud(data) {
   if (!cloudFile || cloudSyncing) return;
+  // 防护：空数据或默认状态不上传，避免覆盖云端已有数据
+  if (!data || !data.courses || data.courses.length === 0) {
+    // 只有打卡记录或盲盒记录时也允许上传（可能用户删了课程但保留了历史）
+    if (!data.checkins || data.checkins.length === 0) {
+      console.log('[云端] 跳过上传：数据为空，避免覆盖云端');
+      return;
+    }
+  }
   cloudSyncing = true;
   updateCloudStatus('connecting', '同步中...');
   try {
     const payload = JSON.stringify({ ...data, _updatedAt: Date.now() });
     const resp = await fetch(cloudFile, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: payload });
-    if (resp.ok) { cloudReady = true; updateCloudStatus('ok', '已连接'); }
-    else { updateCloudStatus('error', '保存失败 HTTP' + resp.status); }
-  } catch (e) { updateCloudStatus('error', '网络异常'); }
+    if (resp.ok) {
+      cloudReady = true;
+      updateCloudStatus('ok', '已连接');
+      console.log('[云端] 上传成功，课程' + data.courses.length + ' 打卡' + (data.checkins?.length||0) + ' 盲盒' + (data.blindBoxHistory?.length||0));
+    } else {
+      updateCloudStatus('error', '保存失败 HTTP' + resp.status);
+      console.warn('[云端] 上传失败 HTTP' + resp.status);
+    }
+  } catch (e) {
+    updateCloudStatus('error', '网络异常');
+    console.warn('[云端] 上传异常:', e.message);
+  }
   cloudSyncing = false;
 }
 
