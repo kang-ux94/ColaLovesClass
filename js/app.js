@@ -86,7 +86,7 @@ function saveState() {
 function today() {
   const d = new Date();
   return {
-    dateStr: d.toISOString().split('T')[0],
+    dateStr: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,
     dayOfWeek: d.getDay(),
     year: d.getFullYear(),
     month: d.getMonth() + 1,
@@ -115,7 +115,7 @@ function getWeekDates() {
       dayName: WEEKDAYS[i],
       date: d.getDate(),
       month: d.getMonth() + 1,
-      dateStr: d.toISOString().split('T')[0],
+      dateStr: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,
       isToday: d.toDateString() === current.toDateString(),
     });
   }
