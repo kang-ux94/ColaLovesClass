@@ -77,16 +77,22 @@ function saveState() {
 let appState = loadState();
 let editingCourseId = null;
 
-// 从云端数据同步 profile 名字到本地
+// 从云端数据同步 profile 名字到本地（cola_profiles + appState 双写）
 function syncProfileNameFromCloud(cloudData) {
   if (!cloudData || !cloudData._profileName) return;
   const key = localStorage.getItem('cola_active_key');
   if (!key) return;
+  // 1. 同步到 cola_profiles
   const profiles = JSON.parse(localStorage.getItem('cola_profiles') || '{}');
   if (profiles[key] && profiles[key].name !== cloudData._profileName) {
     profiles[key].name = cloudData._profileName;
     localStorage.setItem('cola_profiles', JSON.stringify(profiles));
-    console.log('[云端] 同步名字:', cloudData._profileName);
+    console.log('[云端] 同步名字到 profiles:', cloudData._profileName);
+  }
+  // 2. 同步到 appState（确保后续 saveToCloud 上传正确的名字）
+  if (appState._profileName !== cloudData._profileName) {
+    appState._profileName = cloudData._profileName;
+    console.log('[云端] 同步名字到 appState:', cloudData._profileName);
   }
 }
 
@@ -2182,7 +2188,8 @@ function updateProfileUI() {
   const nameEl = document.getElementById('headerProfileName');
   if (profile) {
     header.style.display = 'inline-flex';
-    nameEl.textContent = profile.name || '小朋友';
+    // 优先用 appState._profileName（云端同步来源），其次用 cola_profiles 本地的
+    nameEl.textContent = appState._profileName || profile.name || '小朋友';
     renderProfileDropdown();
   } else {
     header.style.display = 'none';

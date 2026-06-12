@@ -180,6 +180,8 @@ async function enterGateStep2() {
   
   // 尝试从旧文件迁移
   migrateOldData().then(oldData => {
+    // 把名字写入 appState，确保后续 saveToCloud 上传时包含 _profileName
+    if (typeof appState !== 'undefined') appState._profileName = name;
     if (typeof onGatePassed === 'function') onGatePassed(oldData);
     else if (typeof onGatePassed === 'function') onGatePassed(null);
   });
@@ -334,9 +336,8 @@ async function saveToCloud(data) {
   cloudSyncing = true;
   updateCloudStatus('connecting', '同步中...');
   try {
-    const profile = getCurrentProfile();
-    const profileName = profile?.name;
-    const payload = JSON.stringify({ ...data, _updatedAt: Date.now(), ...(profileName ? { _profileName: profileName } : {}) });
+    // _profileName 直接来自 appState（由 loadFromCloud/syncProfileNameFromCloud 同步）
+    const payload = JSON.stringify({ ...data, _updatedAt: Date.now() });
     const resp = await fetch(cloudFile, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: payload });
     if (resp.ok) {
       cloudReady = true;
