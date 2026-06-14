@@ -703,17 +703,22 @@ function renderBlindBoxHistory() {
   container.innerHTML = history.map(h => {
     const course = getCourse(h.courseId);
     const isRedeemed = h.redeemed === true;
+    const rarityClass = h.rarity === '超级稀有' ? 'bbh-super' : h.rarity === '稀有' ? 'bbh-rare' : 'bbh-normal';
     return `
-      <div class="history-item${isRedeemed ? ' redeemed' : ''}">
-        <span class="history-date">${formatDate(h.date)}</span>
-        <span style="font-size:24px;">${h.emoji}</span>
-        <span class="history-action">
-          ${course?.icon || ''} ${course?.name || ''} 第${h.round}轮
-        </span>
-        <span class="history-prize">${h.prize}</span>
-        <button class="redeem-btn${isRedeemed ? ' done' : ''}" onclick="event.stopPropagation();toggleRedeem('${h.id}')" title="${isRedeemed ? '已兑奖，点击撤销' : '未兑奖，点击标记'}">
-          ${isRedeemed ? '✅ 已兑奖' : '🎫 兑奖'}
-        </button>
+      <div class="bb-history-item${isRedeemed ? ' redeemed' : ''}">
+        <div class="bbh-row-top">
+          <span class="bbh-emoji">${h.emoji}</span>
+          <span class="bbh-prize">${h.prize}</span>
+          <span class="bbh-rarity ${rarityClass}">${h.rarity}</span>
+          <button class="redeem-btn${isRedeemed ? ' done' : ''}" onclick="event.stopPropagation();toggleRedeem('${h.id}')" title="${isRedeemed ? '已兑奖，点击撤销' : '未兑奖，点击标记'}">
+            ${isRedeemed ? '✅ 已兑' : '🎫 兑奖'}
+          </button>
+        </div>
+        <div class="bbh-row-bottom">
+          <span class="bbh-date">📅 ${formatDate(h.date)}</span>
+          <span class="bbh-course">${course?.icon || ''} ${course?.name || ''}</span>
+          <span class="bbh-round">第${h.round}轮</span>
+        </div>
       </div>`;
   }).join('');
 }

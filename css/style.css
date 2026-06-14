@@ -1102,7 +1102,7 @@ body::before {
 }
 .cp-stat-label { font-size: 11px; color: var(--text-muted); margin-top: 3px; font-weight: 600; }
 
-.history-list { max-height: 300px; overflow-y: auto; }
+.history-list { max-height: 420px; overflow-y: auto; }
 
 .history-item {
   display: flex;
@@ -1121,7 +1121,7 @@ body::before {
 
 /* 兑奖按钮 */
 .redeem-btn {
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: var(--radius-pill);
   border: 1.5px solid var(--primary);
   background: rgba(255,107,53,0.08);
@@ -1148,14 +1148,63 @@ body::before {
   color: #fff;
 }
 
-/* 已兑奖的历史记录 */
-.history-item.redeemed {
-  opacity: 0.7;
+/* --- 盲盒抽奖历史卡片 --- */
+.bb-history-item {
+  background: rgba(255,255,255,0.7);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(240,230,211,0.6);
+  transition: all 0.25s var(--ease-out-expo);
 }
-.history-item.redeemed .history-prize {
+.bb-history-item:last-child { margin-bottom: 0; }
+.bb-history-item:hover { background: rgba(255,255,255,0.9); box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+.bb-history-item.redeemed { opacity: 0.55; }
+
+/* 顶行：emoji + 奖品名 + 稀有度 + 兑奖按钮 */
+.bbh-row-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.bbh-emoji { font-size: 28px; line-height: 1; }
+.bbh-prize {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-dark);
+  flex: 1;
+}
+.bb-history-item.redeemed .bbh-prize {
   text-decoration: line-through;
   text-decoration-color: rgba(76,201,130,0.5);
 }
+
+/* 稀有度标签 */
+.bbh-rarity {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.bbh-super { background: linear-gradient(135deg, #FFD700, #FF8C00); color: #fff; }
+.bbh-rare { background: rgba(167,139,250,0.15); color: #8B5CF6; }
+.bbh-normal { background: rgba(148,163,184,0.15); color: #64748B; }
+
+/* 底行：日期 + 课程 + 轮次 */
+.bbh-row-bottom {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.bbh-date { font-weight: 600; }
+.bbh-course { font-weight: 600; color: var(--text-light); }
+.bbh-round { font-weight: 700; color: var(--primary); }
 
 /* --- Blind Box Tab (3D Perspective) --- */
 .bb-container {
