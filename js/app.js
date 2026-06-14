@@ -272,6 +272,7 @@ function drawBlindBox(courseId) {
     emoji: prize.emoji,
     rarity: prize.weight <= 5 ? '超级稀有' : prize.weight <= 10 ? '稀有' : '普通',
     round: cp.completedRounds,
+    redeemed: false,
   });
   
   saveState();
@@ -701,16 +702,29 @@ function renderBlindBoxHistory() {
   
   container.innerHTML = history.map(h => {
     const course = getCourse(h.courseId);
+    const isRedeemed = h.redeemed === true;
     return `
-      <div class="history-item">
+      <div class="history-item${isRedeemed ? ' redeemed' : ''}">
         <span class="history-date">${formatDate(h.date)}</span>
         <span style="font-size:24px;">${h.emoji}</span>
         <span class="history-action">
           ${course?.icon || ''} ${course?.name || ''} 第${h.round}轮
         </span>
         <span class="history-prize">${h.prize}</span>
+        <button class="redeem-btn${isRedeemed ? ' done' : ''}" onclick="event.stopPropagation();toggleRedeem('${h.id}')" title="${isRedeemed ? '已兑奖，点击撤销' : '未兑奖，点击标记'}">
+          ${isRedeemed ? '✅ 已兑奖' : '🎫 兑奖'}
+        </button>
       </div>`;
   }).join('');
+}
+
+function toggleRedeem(historyId) {
+  const record = appState.blindBoxHistory.find(b => b.id === historyId);
+  if (!record) return;
+  record.redeemed = !record.redeemed;
+  saveState();
+  renderBlindBoxHistory();
+  showToast(record.redeemed ? '✅ 已标记为已兑奖' : '🔄 已撤销兑奖标记');
 }
 
 // --- 盲盒抽奖动画 ---

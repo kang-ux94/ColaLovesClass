@@ -1119,6 +1119,44 @@ body::before {
 .history-points { font-weight: 800; color: var(--success); }
 .history-prize { color: var(--primary); font-weight: 700; }
 
+/* 兑奖按钮 */
+.redeem-btn {
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--primary);
+  background: rgba(255,107,53,0.08);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s var(--ease-out-expo);
+  flex-shrink: 0;
+}
+.redeem-btn:hover {
+  background: var(--primary);
+  color: #fff;
+  transform: scale(1.05);
+}
+.redeem-btn.done {
+  background: rgba(76,201,130,0.12);
+  border-color: var(--success);
+  color: var(--success);
+}
+.redeem-btn.done:hover {
+  background: var(--success);
+  color: #fff;
+}
+
+/* 已兑奖的历史记录 */
+.history-item.redeemed {
+  opacity: 0.7;
+}
+.history-item.redeemed .history-prize {
+  text-decoration: line-through;
+  text-decoration-color: rgba(76,201,130,0.5);
+}
+
 /* --- Blind Box Tab (3D Perspective) --- */
 .bb-container {
   text-align: center;
