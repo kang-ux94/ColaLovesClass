@@ -208,15 +208,15 @@ function getCoursePoints(courseId) {
 }
 
 function isCheckedIn(courseId, dateStr) {
-  return appState.checkins.some(c => c.courseId === courseId && c.date === dateStr);
+  return appState.checkins.some(c => c.courseId === courseId && c.date === dateStr && !c.isAbsence && !c.noteOnly);
 }
 
 function doCheckin(courseId, customDate = null, note = null) {
   const t = customDate ? { dateStr: customDate, dayOfWeek: new Date(customDate).getDay() } : today();
   const dateStr = t.dateStr;
   
-  // 检查是否已经打卡
-  const existingIdx = appState.checkins.findIndex(c => c.courseId === courseId && c.date === dateStr);
+  // 检查是否已经打卡（排除请假记录）
+  const existingIdx = appState.checkins.findIndex(c => c.courseId === courseId && c.date === dateStr && !c.isAbsence && !c.noteOnly);
   
   if (existingIdx >= 0) {
     // 已打卡，更新备注
@@ -323,6 +323,7 @@ function renderTodayClasses() {
   
   container.innerHTML = todayCourses.map(course => {
     const checked = isCheckedIn(course.id, t.dateStr);
+    const isAbsence = appState.checkins.some(c => c.courseId === course.id && c.date === t.dateStr && c.isAbsence);
     const isPast = isPastClass(course);
     const schedules = getSchedulesForDay(course, t.dayOfWeek, t.dateStr);
     const timeStr = schedules.map(s => s.time).join(' / ');
@@ -330,7 +331,10 @@ function renderTodayClasses() {
     let statusClass = 'pending';
     let btnHtml;
     
-    if (checked) {
+    if (isAbsence) {
+      statusClass = 'absent';
+      btnHtml = `<button class="checkin-btn absent-btn" onclick="quickCheckin('${course.id}')">🏠 请假中 → 打卡</button>`;
+    } else if (checked) {
       statusClass = 'checked';
       btnHtml = `<button class="checkin-btn done">✅</button>`;
     } else if (isPast) {
@@ -1295,6 +1299,14 @@ function quickCheckin(courseId) {
   const course = getCourse(courseId);
   if (!course) return;
   
+  // 清除已有的请假记录，避免干扰打卡
+  const t = today();
+  const absenceIdx = appState.checkins.findIndex(c => c.courseId === courseId && c.date === t.dateStr && c.isAbsence);
+  if (absenceIdx >= 0) {
+    appState.checkins.splice(absenceIdx, 1);
+    saveState();
+  }
+  
   const reached100 = doCheckin(courseId);
   
   if (reached100) {
@@ -1336,7 +1348,7 @@ function updatePendingBadge() {
   const todayCourses = appState.courses.filter(c => 
     c.schedules.some(s => s.dayOfWeek === t.dayOfWeek)
   );
-  const pendingCount = todayCourses.filter(c => !isCheckedIn(c.id, t.dateStr) && !isPastClass(c)).length;
+  const pendingCount = todayCourses.filter(c => !isCheckedIn(c.id, t.dateStr) && !isPastClass(c) && !appState.checkins.some(chk => chk.courseId === c.id && chk.date === t.dateStr && chk.isAbsence)).length;
   
   const badge = document.getElementById('badgePending');
   if (pendingCount > 0) {
@@ -1575,12 +1587,12 @@ function showDayDetail(dateStr) {
     const noteRecord = appState.checkins.find(c => c.courseId === course.id && c.date === dateStr && (c.noteOnly || c.isAbsence || c.note));
     
     let statusLabel, statusCls;
-    if (checked) {
-      statusLabel = '✅ 已打卡';
-      statusCls = 'checked';
-    } else if (absenceRecord) {
+    if (absenceRecord) {
       statusLabel = '🏠 请假';
       statusCls = 'absent';
+    } else if (checked) {
+      statusLabel = '✅ 已打卡';
+      statusCls = 'checked';
     } else if (isFuture || isToday) {
       statusLabel = '⏳ 待打卡';
       statusCls = 'pending';

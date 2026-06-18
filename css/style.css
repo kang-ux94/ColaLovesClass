@@ -491,6 +491,12 @@ body::before {
   filter: grayscale(0.2);
 }
 
+.today-class-card.absent {
+  border-color: rgba(245,158,11,0.35);
+  background: linear-gradient(135deg, rgba(254,243,199,0.5), rgba(255,255,255,0.75));
+  opacity: 0.88;
+}
+
 .class-icon-circle {
   width: 54px;
   height: 54px;
@@ -583,6 +589,16 @@ body::before {
   font-size: 13px;
   padding: 8px 14px;
   box-shadow: 0 2px 8px rgba(255,107,107,0.1);
+}
+
+.checkin-btn.absent-btn {
+  background: rgba(254,243,199,0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #92400E;
+  font-size: 13px;
+  padding: 8px 14px;
+  box-shadow: 0 2px 8px rgba(245,158,11,0.12);
 }
 
 /* --- Points Bar (Neon Gradient Card) --- */
