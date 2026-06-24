@@ -1526,28 +1526,34 @@ function buildDayStatusMap(year, month, daysInMonth) {
     
     // 过去日期：检查是否已打卡/请假
     const todayCourses = appState.courses.filter(c => 
-      c.schedules.some(s => s.dayOfWeek === dayOfWeek)
+      c.schedules.some(s => s.dayOfWeek === dayOfWeek) ||
+      (c.dateSchedules && c.dateSchedules.some(ds => ds.date === dateStr))
     );
     
-    let allChecked = true;
-    let hasAbsence = false;
+    let hasChecked = false;
+    let hasAbsent = false;
+    let hasMissed = false;
     
     todayCourses.forEach(c => {
       const checked = isCheckedIn(c.id, dateStr);
       const isAbsent = appState.checkins.some(chk => 
         chk.courseId === c.id && chk.date === dateStr && chk.isAbsence
       );
-      if (!checked && !isAbsent) allChecked = false;
-      if (isAbsent) hasAbsence = true;
+      if (checked) {
+        hasChecked = true;
+      } else if (isAbsent) {
+        hasAbsent = true;
+      } else {
+        hasMissed = true;
+      }
     });
     
-    if (allChecked) {
-      map[dateStr] = 'checked';
-    } else if (hasAbsence && !todayCourses.some(c => !isCheckedIn(c.id, dateStr) && !appState.checkins.some(chk => chk.courseId === c.id && chk.date === dateStr && chk.isAbsence))) {
-      // 全部课程要么已打卡要么已请假
+    if (hasMissed) {
+      map[dateStr] = 'missed';
+    } else if (hasAbsent) {
       map[dateStr] = 'absent';
     } else {
-      map[dateStr] = 'missed';
+      map[dateStr] = 'checked';
     }
   }
   
@@ -1564,7 +1570,8 @@ function showDayDetail(dateStr) {
   const container = document.getElementById('calDayDetail');
   const dayOfWeek = new Date(dateStr).getDay();
   const courses = appState.courses.filter(c => 
-    c.schedules.some(s => s.dayOfWeek === dayOfWeek)
+    c.schedules.some(s => s.dayOfWeek === dayOfWeek) ||
+    (c.dateSchedules && c.dateSchedules.some(ds => ds.date === dateStr))
   );
   
   if (courses.length === 0) {
