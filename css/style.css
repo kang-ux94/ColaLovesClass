@@ -866,6 +866,183 @@ body::before {
   box-shadow: 0 4px 16px rgba(255,107,53,0.1);
 }
 
+.batch-cancel-btn {
+  width: 100%;
+  padding: 14px;
+  border: 2px dashed rgba(255,176,136,0.6);
+  border-radius: var(--radius-sm);
+  background: rgba(255,248,231,0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  font-size: 15px;
+  color: #92400E;
+  cursor: pointer;
+  transition: all 0.3s var(--spring);
+  font-weight: 700;
+  margin-top: 8px;
+}
+
+.batch-cancel-btn:hover {
+  border-color: #F59E0B;
+  color: #78350F;
+  background: rgba(254,243,199,0.8);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(245,158,11,0.15);
+}
+
+/* --- Batch Cancel Modal --- */
+.batch-desc {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.batch-day-selector {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.batch-day-chip {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: white;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s var(--spring);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.batch-day-chip:hover {
+  border-color: #F59E0B;
+  transform: scale(1.1);
+}
+
+.batch-day-chip.selected {
+  background: linear-gradient(135deg, #F59E0B, #FBBF24);
+  color: white;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(245,158,11,0.3);
+  transform: scale(1.05);
+}
+
+.batch-course-list {
+  max-height: 260px;
+  overflow-y: auto;
+  background: rgba(250,250,250,0.6);
+  border-radius: var(--radius-sm);
+  padding: 4px 0;
+  border: 1px solid rgba(240,230,211,0.4);
+}
+
+.batch-course-item {
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(240,230,211,0.3);
+}
+
+.batch-course-item:last-child {
+  border-bottom: none;
+}
+
+.batch-course-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.batch-course-header input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.batch-schedule-list {
+  padding-left: 28px;
+  margin: 2px 0 4px;
+}
+
+.batch-schedule-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 13px;
+  color: var(--text-light);
+}
+
+.batch-schedule-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.batch-summary {
+  background: #FFF8E7;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 14px;
+  color: #92400E;
+  text-align: center;
+  font-weight: 600;
+  border: 1px solid rgba(245,158,11,0.2);
+}
+
+/* --- Slot Rows in Today Card --- */
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.slot-time {
+  color: var(--text-light);
+  font-weight: 600;
+  min-width: 50px;
+  font-size: 12px;
+}
+
+.slot-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+}
+
+.slot-status.checked {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.slot-status.absent {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.slot-status.missed {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+.slot-status.pending {
+  background: #E3F2FD;
+  color: #1565C0;
+}
+
 /* --- Modal (Glass Bottom Sheet) --- */
 .modal-overlay {
   position: fixed;

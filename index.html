@@ -152,6 +152,9 @@
       <!-- 添加课程 -->
       <button class="add-course-btn" id="btnAddCourse">＋ 添加新课程</button>
       
+      <!-- 批量取消课程 -->
+      <button class="batch-cancel-btn" id="btnBatchCancel">📅 批量取消课程</button>
+      
       <!-- 课程列表 -->
       <div style="margin-top:16px;" id="allCoursesList"></div>
     </section>
@@ -374,6 +377,47 @@
       <button class="btn btn-ghost" id="btnMarkAbsence" style="flex:0.7;background:#FEF3C7;color:#92400E;border-color:#F59E0B;" onclick="markAbsence()">🏠 请假</button>
       <button class="btn btn-ghost" id="btnSaveNote" style="flex:0.7;">💾 备注</button>
       <button class="btn btn-primary" id="btnCheckinNote" style="flex:0.8;">✅ 补打卡 +10⭐</button>
+    </div>
+  </div>
+</div>
+
+<!-- Batch Cancel Modal -->
+<div class="modal-overlay" id="modalBatchCancel" style="display:none;">
+  <div class="modal-sheet">
+    <div class="modal-title">📅 批量取消课程</div>
+    <div class="batch-desc">设定范围，将符合条件的课程日标记为「请假」🏠</div>
+    
+    <div class="form-group">
+      <label class="form-label">📆 日期范围</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input class="form-input" type="date" id="batchStartDate" style="flex:1;">
+        <span style="color:var(--text-muted);font-weight:700;">～</span>
+        <input class="form-input" type="date" id="batchEndDate" style="flex:1;">
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label class="form-label">📅 选择星期</label>
+      <div class="batch-day-selector" id="batchDaySelector"></div>
+    </div>
+    
+    <div class="form-group">
+      <label class="form-label">📚 选择课程和时段</label>
+      <div class="batch-course-list" id="batchCourseList"></div>
+    </div>
+    
+    <div class="form-group">
+      <label class="form-label">📝 备注（可选）</label>
+      <textarea class="form-input" id="batchNote" rows="2" placeholder="例如：暑假停课"></textarea>
+    </div>
+    
+    <div class="form-group" id="batchSummaryContainer" style="display:none;">
+      <div class="batch-summary" id="batchSummary"></div>
+    </div>
+    
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeBatchCancel()">取消</button>
+      <button class="btn btn-primary" id="btnBatchConfirm">✅ 确认取消</button>
     </div>
   </div>
 </div>

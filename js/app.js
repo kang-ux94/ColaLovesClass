@@ -300,7 +300,7 @@ function getCourse(courseId) {
 
 // --- UI 渲染 ---
 
-// 首页 - 今日课程
+// 首页 - 今日课程（按时间段展示）
 function renderTodayClasses() {
   const container = document.getElementById('todayClasses');
   const t = today();
@@ -322,36 +322,59 @@ function renderTodayClasses() {
   }
   
   container.innerHTML = todayCourses.map(course => {
-    const checked = isCheckedIn(course.id, t.dateStr);
-    const isAbsence = appState.checkins.some(c => c.courseId === course.id && c.date === t.dateStr && c.isAbsence);
-    const isPast = isPastClass(course);
     const schedules = getSchedulesForDay(course, t.dayOfWeek, t.dateStr);
-    const timeStr = schedules.map(s => s.time).join(' / ');
+    const hasCheckin = isCheckedIn(course.id, t.dateStr);
+    
+    const slotStatuses = schedules.map(s => ({
+      time: s.time,
+      status: hasCheckin ? 'checked' : getSlotStatus(course.id, t.dateStr, s.time)
+    }));
+    
+    const allChecked = slotStatuses.every(ss => ss.status === 'checked');
+    const allAbsent = slotStatuses.every(ss => ss.status === 'absent');
+    const anyPending = slotStatuses.some(ss => ss.status === 'pending');
+    const anyMissed = slotStatuses.some(ss => ss.status === 'missed');
     
     let statusClass = 'pending';
-    let btnHtml;
-    
-    if (isAbsence) {
-      statusClass = 'absent';
-      btnHtml = `<button class="checkin-btn absent-btn" onclick="quickCheckin('${course.id}')">🏠 请假中 → 打卡</button>`;
-    } else if (checked) {
+    if (allChecked) {
       statusClass = 'checked';
-      btnHtml = `<button class="checkin-btn done">✅</button>`;
-    } else if (isPast) {
-      statusClass = 'missed';
-      btnHtml = `<button class="checkin-btn missed-btn" onclick="quickCheckin('${course.id}')">补打卡</button>`;
-    } else {
-      btnHtml = `<button class="checkin-btn go" onclick="quickCheckin('${course.id}')">打卡 +10⭐</button>`;
+    } else if (allAbsent) {
+      statusClass = 'absent';
+    } else if (!anyPending && !anyMissed && !allAbsent) {
+      // mixed: some checked, some absent
     }
+    
+    let btnHtml;
+    if (allChecked) {
+      btnHtml = `<button class="checkin-btn done">✅</button>`;
+    } else if (allAbsent) {
+      btnHtml = `<button class="checkin-btn absent-btn" onclick="quickCheckin('${course.id}')">🏠 请假中 → 打卡</button>`;
+    } else if (anyPending) {
+      btnHtml = `<button class="checkin-btn go" onclick="quickCheckin('${course.id}')">打卡 +10⭐</button>`;
+    } else {
+      btnHtml = `<button class="checkin-btn missed-btn" onclick="quickCheckin('${course.id}')">补打卡</button>`;
+    }
+    
+    const slotsHtml = slotStatuses.map(ss => {
+      const statusLabel = ss.status === 'checked' ? '✅ 已打卡'
+        : ss.status === 'absent' ? '🏠 已请假'
+        : ss.status === 'missed' ? '❌ 漏打卡'
+        : '⏳ 待打卡';
+      const statusCls = ss.status;
+      return `<div class="slot-row">
+        <span class="slot-time">⏰ ${ss.time}</span>
+        <span class="slot-status ${statusCls}">${statusLabel}</span>
+      </div>`;
+    }).join('');
     
     return `
       <div class="today-class-card ${statusClass}">
         <div class="class-icon-circle" style="background:${course.color}22;color:${course.color}">
           ${course.icon}
         </div>
-        <div class="class-info">
+        <div style="flex:1;">
           <div class="class-name">${course.name}</div>
-          <div class="class-time">⏰ ${timeStr}</div>
+          ${slotsHtml}
         </div>
         ${btnHtml}
       </div>`;
@@ -383,6 +406,22 @@ function isPastClass(course) {
   const lastTime = new Date(now);
   lastTime.setHours(h, m, 0, 0);
   return now > new Date(lastTime.getTime() + 2 * 60 * 60 * 1000);
+}
+
+// 获取课程在指定日期的指定时间段的状态
+function getSlotStatus(courseId, dateStr, scheduleTime) {
+  const hasCheckin = appState.checkins.some(c =>
+    c.courseId === courseId && c.date === dateStr && !c.isAbsence && !c.noteOnly
+  );
+  if (hasCheckin) return 'checked';
+  
+  const isScheduledAbsent = appState.checkins.some(c =>
+    c.courseId === courseId && c.date === dateStr && c.isAbsence &&
+    (!c.scheduleTime || c.scheduleTime === scheduleTime)
+  );
+  if (isScheduledAbsent) return 'absent';
+  
+  return 'pending';
 }
 
 // 积分概览
@@ -843,6 +882,7 @@ function animateBgParticles() {
   if (document.getElementById('gate-overlay').style.display === 'flex') { particlesAnimationId = requestAnimationFrame(animateBgParticles); return; }
   if (document.getElementById('modalSettings').style.display === 'flex') { particlesAnimationId = requestAnimationFrame(animateBgParticles); return; }
   if (document.getElementById('modalCourse').style.display === 'flex') { particlesAnimationId = requestAnimationFrame(animateBgParticles); return; }
+  if (document.getElementById('modalBatchCancel').style.display === 'flex') { particlesAnimationId = requestAnimationFrame(animateBgParticles); return; }
   
   const now = Date.now();
   pctx.clearRect(0, 0, particlesCanvas.width, particlesCanvas.height);
@@ -1299,11 +1339,11 @@ function quickCheckin(courseId) {
   const course = getCourse(courseId);
   if (!course) return;
   
-  // 清除已有的请假记录，避免干扰打卡
+  // 清除已有的请假记录（可能有多条按时间段的），避免干扰打卡
   const t = today();
-  const absenceIdx = appState.checkins.findIndex(c => c.courseId === courseId && c.date === t.dateStr && c.isAbsence);
-  if (absenceIdx >= 0) {
-    appState.checkins.splice(absenceIdx, 1);
+  const beforeLen = appState.checkins.length;
+  appState.checkins = appState.checkins.filter(c => !(c.courseId === courseId && c.date === t.dateStr && c.isAbsence));
+  if (appState.checkins.length !== beforeLen) {
     saveState();
   }
   
@@ -1348,12 +1388,31 @@ function updatePendingBadge() {
   const todayCourses = appState.courses.filter(c => 
     c.schedules.some(s => s.dayOfWeek === t.dayOfWeek)
   );
-  const pendingCount = todayCourses.filter(c => !isCheckedIn(c.id, t.dateStr) && !isPastClass(c) && !appState.checkins.some(chk => chk.courseId === c.id && chk.date === t.dateStr && chk.isAbsence)).length;
+  
+  // 按时间段统计待打卡数
+  let pendingSlotCount = 0;
+  let hasFuturePending = false;
+  
+  todayCourses.forEach(c => {
+    const schedules = getSchedulesForDay(c, t.dayOfWeek, t.dateStr);
+    schedules.forEach(s => {
+      const status = getSlotStatus(c.id, t.dateStr, s.time);
+      if (status === 'pending') {
+        const [h, m] = s.time.split(':').map(Number);
+        const slotTime = new Date(t.year, t.month - 1, t.day, h, m);
+        const now = new Date();
+        if (now < new Date(slotTime.getTime() + 2 * 60 * 60 * 1000)) {
+          pendingSlotCount++;
+          if (now < slotTime) hasFuturePending = true;
+        }
+      }
+    });
+  });
   
   const badge = document.getElementById('badgePending');
-  if (pendingCount > 0) {
+  if (pendingSlotCount > 0) {
     badge.style.display = 'inline-block';
-    badge.textContent = pendingCount;
+    badge.textContent = pendingSlotCount;
   } else {
     badge.style.display = 'none';
   }
@@ -1365,15 +1424,12 @@ function updatePendingBadge() {
   if (todayCourses.length === 0) {
     forgetMsg.textContent = '今天没有课程，好好休息吧～ 😊';
     bottomBar.style.background = '#F5F5F5';
-  } else if (pendingCount > 0) {
-    forgetMsg.textContent = `还有 ${pendingCount} 节课没打卡，别忘了赚积分哦！`;
+  } else if (pendingSlotCount > 0) {
+    forgetMsg.textContent = `还有 ${pendingSlotCount} 节课没打卡，别忘了赚积分哦！`;
     bottomBar.style.background = '#FFF3E0';
   } else {
-    const allChecked = todayCourses.every(c => isCheckedIn(c.id, t.dateStr));
-    if (allChecked) {
-      forgetMsg.textContent = '今天全部打卡完成，太棒了！🌟';
-      bottomBar.style.background = '#E8F5E9';
-    }
+    forgetMsg.textContent = '今天全部打卡完成，太棒了！🌟';
+    bottomBar.style.background = '#E8F5E9';
   }
 }
 
@@ -1587,42 +1643,38 @@ function showDayDetail(dateStr) {
   
   courses.forEach(course => {
     const schedules = getSchedulesForDay(course, dayOfWeek, dateStr);
-    const timeStr = schedules.map(s => s.time).join(' / ');
-    const checked = isCheckedIn(course.id, dateStr);
-    const checkinRecord = appState.checkins.find(c => c.courseId === course.id && c.date === dateStr && !c.isAbsence && !c.noteOnly);
-    const absenceRecord = appState.checkins.find(c => c.courseId === course.id && c.date === dateStr && c.isAbsence);
+    const hasCheckin = isCheckedIn(course.id, dateStr);
     const noteRecord = appState.checkins.find(c => c.courseId === course.id && c.date === dateStr && (c.noteOnly || c.isAbsence || c.note));
-    
-    let statusLabel, statusCls;
-    if (absenceRecord) {
-      statusLabel = '🏠 请假';
-      statusCls = 'absent';
-    } else if (checked) {
-      statusLabel = '✅ 已打卡';
-      statusCls = 'checked';
-    } else if (isFuture || isToday) {
-      statusLabel = '⏳ 待打卡';
-      statusCls = 'pending';
-    } else {
-      statusLabel = '❌ 漏打卡';
-      statusCls = 'missed';
-    }
-    
-    const note = noteRecord?.note || '';
     const escapedName = course.name.replace(/'/g, "\\'");
-    const hasEditBtn = !checked && !isFuture;
+    const anyAbsent = schedules.some(s => getSlotStatus(course.id, dateStr, s.time) === 'absent');
+    const anyPending = schedules.some(s => getSlotStatus(course.id, dateStr, s.time) === 'pending');
+    const allChecked = schedules.length > 0 && schedules.every(s => getSlotStatus(course.id, dateStr, s.time) === 'checked');
+    
+    // 按时间段显示
+    const slotsHtml = schedules.map(s => {
+      const status = getSlotStatus(course.id, dateStr, s.time);
+      const statusLabel = status === 'checked' ? '✅ 已打卡'
+        : status === 'absent' ? '🏠 请假'
+        : status === 'missed' ? '❌ 漏打卡'
+        : '⏳ 待打卡';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:2px 0;font-size:12px;">
+        <span style="color:var(--text-light);min-width:48px;">⏰ ${s.time}</span>
+        <span class="cal-detail-status ${status}">${statusLabel}</span>
+      </div>`;
+    }).join('');
+    
+    const hasEditBtn = !hasCheckin && !isFuture;
     
     html += `
       <div class="cal-detail-course">
-        <span style="font-size:20px;">${course.icon}</span>
+        <span style="font-size:20px;align-self:flex-start;margin-top:2px;">${course.icon}</span>
         <div style="flex:1;">
           <div style="font-weight:600;">${course.name}</div>
-          <div style="font-size:11px;color:var(--text-muted);">⏰ ${timeStr}</div>
-          ${note ? `<div class="cal-detail-note">📝 ${note}</div>` : ''}
+          ${slotsHtml}
+          ${noteRecord?.note ? `<div class="cal-detail-note">📝 ${noteRecord.note}</div>` : ''}
         </div>
-        <span class="cal-detail-status ${statusCls}">${statusLabel}</span>
-        ${(hasEditBtn || absenceRecord) ? 
-          `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;flex:0;margin-left:4px;" 
+        ${(hasEditBtn || anyAbsent) ? 
+          `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;flex:0;margin-left:4px;align-self:flex-start;" 
              onclick="openNotesModal('${course.id}', '${dateStr}', '${course.icon}', '${escapedName}')">📝</button>` : ''}
       </div>`;
   });
@@ -1804,6 +1856,253 @@ function markAbsence() {
   showToast('🏠 已标记请假');
 }
 
+// =============================================
+//  批量取消课程
+// =============================================
+function openBatchCancel() {
+  const modal = document.getElementById('modalBatchCancel');
+  const todayStr = today().dateStr;
+  const end = new Date();
+  end.setMonth(end.getMonth() + 2);
+  const endStr = end.toISOString().slice(0, 10);
+  
+  document.getElementById('batchStartDate').value = todayStr;
+  document.getElementById('batchEndDate').value = endStr;
+  document.getElementById('batchNote').value = '';
+  
+  renderBatchDayChips();
+  renderBatchCourseList();
+  updateBatchSummary();
+  
+  modal.style.display = 'flex';
+}
+
+function closeBatchCancel() {
+  document.getElementById('modalBatchCancel').style.display = 'none';
+}
+
+function renderBatchDayChips() {
+  const container = document.getElementById('batchDaySelector');
+  const activeDays = new Set();
+  appState.courses.forEach(c => {
+    c.schedules.forEach(s => activeDays.add(s.dayOfWeek));
+  });
+  
+  container.innerHTML = WEEKDAYS_FULL.map((name, idx) =>
+    `<button class="batch-day-chip${activeDays.has(idx) ? ' selected' : ''}"
+       data-day="${idx}" onclick="toggleBatchDay(${idx})">${name}</button>`
+  ).join('');
+}
+
+function toggleBatchDay(dayOfWeek) {
+  const chip = document.querySelector(`.batch-day-chip[data-day="${dayOfWeek}"]`);
+  if (chip) chip.classList.toggle('selected');
+  updateBatchSummary();
+}
+
+function getSelectedDays() {
+  const chips = document.querySelectorAll('.batch-day-chip.selected');
+  return Array.from(chips).map(c => parseInt(c.dataset.day));
+}
+
+function renderBatchCourseList() {
+  const container = document.getElementById('batchCourseList');
+  if (appState.courses.length === 0) {
+    container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;">还没有课程，先去添加吧</div>';
+    return;
+  }
+  
+  container.innerHTML = appState.courses.map(c => {
+    const expanded = appState.courses.length <= 3;
+    return `
+    <div class="batch-course-item">
+      <label class="batch-course-header" onclick="event.stopPropagation()">
+        <input type="checkbox" checked data-course="${c.id}" onchange="toggleBatchCourse('${c.id}')">
+        <span>${c.icon} ${c.name}</span>
+      </label>
+      <div class="batch-schedule-list" id="batchSchedules_${c.id}">
+        ${renderBatchScheduleItems(c)}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderBatchScheduleItems(course) {
+  return course.schedules.map(s =>
+    `<label class="batch-schedule-item" onclick="event.stopPropagation()">
+      <input type="checkbox" checked data-course="${course.id}" data-time="${s.time}"
+             onchange="toggleBatchSchedule('${course.id}', '${s.time}')">
+      <span>${WEEKDAYS_FULL[s.dayOfWeek]} ${s.time}</span>
+    </label>`
+  ).join('');
+}
+
+function toggleBatchCourse(courseId) {
+  const checkbox = document.querySelector(`.batch-course-header input[data-course="${courseId}"]`);
+  if (!checkbox) return;
+  const isChecked = checkbox.checked;
+  document.querySelectorAll(`#batchSchedules_${courseId} input[type="checkbox"]`).forEach(cb => {
+    cb.checked = isChecked;
+  });
+  updateBatchSummary();
+}
+
+function toggleBatchSchedule(courseId, scheduleTime) {
+  updateBatchCourseHeaderCheckbox(courseId);
+  updateBatchSummary();
+}
+
+function updateBatchCourseHeaderCheckbox(courseId) {
+  const scheduleCheckboxes = document.querySelectorAll(`#batchSchedules_${courseId} input[type="checkbox"]`);
+  const allChecked = Array.from(scheduleCheckboxes).every(cb => cb.checked);
+  const headerCb = document.querySelector(`.batch-course-header input[data-course="${courseId}"]`);
+  if (headerCb) headerCb.checked = allChecked;
+}
+
+function collectSelectedSchedules() {
+  const selected = [];
+  document.querySelectorAll('#batchCourseList input[type="checkbox"]:checked').forEach(cb => {
+    const courseId = cb.dataset.course;
+    const time = cb.dataset.time;
+    if (courseId && time) {
+      selected.push({ courseId, time });
+    }
+  });
+  return selected;
+}
+
+function updateBatchSummary() {
+  const startStr = document.getElementById('batchStartDate').value;
+  const endStr = document.getElementById('batchEndDate').value;
+  if (!startStr || !endStr) {
+    document.getElementById('batchSummaryContainer').style.display = 'none';
+    return;
+  }
+  
+  const selectedDays = getSelectedDays();
+  const selectedSchedules = collectSelectedSchedules();
+  const note = document.getElementById('batchNote').value.trim();
+  
+  if (selectedDays.length === 0 || selectedSchedules.length === 0) {
+    document.getElementById('batchSummaryContainer').style.display = 'none';
+    return;
+  }
+  
+  let count = 0;
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  const current = new Date(start);
+  
+  while (current <= end) {
+    const dayOfWeek = current.getDay();
+    if (selectedDays.includes(dayOfWeek)) {
+      const dateStr = current.toISOString().slice(0, 10);
+      selectedSchedules.forEach(({ courseId, time }) => {
+        const course = getCourse(courseId);
+        if (!course) return;
+        const hasSchedule = course.schedules.some(s =>
+          s.dayOfWeek === dayOfWeek && s.time === time
+        );
+        if (hasSchedule) {
+          count++;
+        }
+      });
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  
+  const container = document.getElementById('batchSummaryContainer');
+  const summary = document.getElementById('batchSummary');
+  
+  if (count === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  
+  container.style.display = 'block';
+  summary.innerHTML = `将标记 <strong>${count}</strong> 个课程日为请假 🏠`;
+  
+  const btn = document.getElementById('btnBatchConfirm');
+  btn.disabled = false;
+  btn.style.opacity = '1';
+}
+
+function confirmBatchCancel() {
+  const startStr = document.getElementById('batchStartDate').value;
+  const endStr = document.getElementById('batchEndDate').value;
+  if (!startStr || !endStr) return;
+  
+  const selectedDays = getSelectedDays();
+  const selectedSchedules = collectSelectedSchedules();
+  const note = document.getElementById('batchNote').value.trim();
+  
+  if (selectedDays.length === 0 || selectedSchedules.length === 0) {
+    showToast('请选择星期和时段');
+    return;
+  }
+  
+  let createdCount = 0;
+  let skipCount = 0;
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  const current = new Date(start);
+  
+  while (current <= end) {
+    const dayOfWeek = current.getDay();
+    if (selectedDays.includes(dayOfWeek)) {
+      const dateStr = current.toISOString().slice(0, 10);
+      selectedSchedules.forEach(({ courseId, time }) => {
+        const course = getCourse(courseId);
+        if (!course) return;
+        const hasSchedule = course.schedules.some(s =>
+          s.dayOfWeek === dayOfWeek && s.time === time
+        );
+        if (!hasSchedule) return;
+        
+        // 检查是否已有打卡或请假记录
+        const hasCheckin = appState.checkins.some(c =>
+          c.courseId === courseId && c.date === dateStr && !c.isAbsence && !c.noteOnly
+        );
+        const hasAbsence = appState.checkins.some(c =>
+          c.courseId === courseId && c.date === dateStr && c.isAbsence &&
+          (!c.scheduleTime || c.scheduleTime === time)
+        );
+        
+        if (hasCheckin || hasAbsence) {
+          skipCount++;
+          return;
+        }
+        
+        appState.checkins.push({
+          id: 'abs_' + Date.now() + '_' + createdCount,
+          courseId,
+          date: dateStr,
+          time: '',
+          scheduleTime: time,
+          note: note || null,
+          isAbsence: true,
+        });
+        createdCount++;
+      });
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  
+  if (createdCount === 0) {
+    showToast('所选时段均已处理，无需重复操作');
+    closeBatchCancel();
+    return;
+  }
+  
+  saveState();
+  closeBatchCancel();
+  renderAll();
+  
+  let msg = `✅ 已为 ${createdCount} 个课程日标记请假 🏠`;
+  if (skipCount > 0) msg += `（${skipCount} 个已跳过）`;
+  showToast(msg);
+}
+
 // --- 全局渲染 ---
 function renderAll() {
   updateProfileUI();
@@ -1868,6 +2167,21 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('inputPrizeWeight').addEventListener('input', function() {
     document.getElementById('weightDisplay').textContent = this.value;
   });
+  
+  // 批量取消按钮
+  document.getElementById('btnBatchCancel').addEventListener('click', openBatchCancel);
+  
+  // 批量取消弹窗关闭
+  document.getElementById('modalBatchCancel').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeBatchCancel();
+  });
+  
+  // 批量取消日期变化
+  document.getElementById('batchStartDate').addEventListener('change', updateBatchSummary);
+  document.getElementById('batchEndDate').addEventListener('change', updateBatchSummary);
+  
+  // 批量取消备注变化
+  document.getElementById('batchNote').addEventListener('input', updateBatchSummary);
   
   // 通知按钮 → 改为跳转到设置（手机场景更实用）
   document.getElementById('btnNotify').addEventListener('click', () => {
