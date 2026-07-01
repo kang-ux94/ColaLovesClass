@@ -1513,7 +1513,7 @@ function renderCalendar() {
   
   // 星期头
   let html = WEEKDAYS_FULL.map((d, i) => 
-    `<div class="cal-day-header${i === 0 || i === 6 ? ' weekend' : ''}">${d[0]}</div>`
+    `<div class="cal-day-header${i === 0 || i === 6 ? ' weekend' : ''}">${d[1]}</div>`
   ).join('');
   
   // 当月第一天
@@ -2182,6 +2182,9 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // 批量取消备注变化
   document.getElementById('batchNote').addEventListener('input', updateBatchSummary);
+  
+  // 批量取消确认按钮
+  document.getElementById('btnBatchConfirm').addEventListener('click', confirmBatchCancel);
   
   // 通知按钮 → 改为跳转到设置（手机场景更实用）
   document.getElementById('btnNotify').addEventListener('click', () => {
