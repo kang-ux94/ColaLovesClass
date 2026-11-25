@@ -10,10 +10,10 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <link rel="manifest" href="manifest.json?v=29">
+  <link rel="manifest" href="manifest.json?v=32">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%23FF6B35'/><text x='96' y='120' text-anchor='middle' font-size='90'>🎒</text></svg>">
   <title>可乐爱上课</title>
-  <link rel="stylesheet" href="css/style.css?v=29">
+  <link rel="stylesheet" href="css/style.css?v=32">
 </head>
 <body>
 
@@ -201,7 +201,7 @@
     </div>
     <span id="cloudStatusDot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#B2BEC3;margin:0 4px;cursor:pointer;" title="云同步状态" onclick="openSettings()"></span>
     <span id="cloudStatusText" style="font-size:10px;color:var(--text-muted);white-space:nowrap;cursor:pointer;" onclick="openSettings()">离线</span>
-    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">v29</span>
+    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">v32</span>
   </div>
 </div>
 
@@ -234,6 +234,11 @@
     <div class="form-group">
       <label class="form-label">主题颜色</label>
       <div class="color-picker" id="colorPicker"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">打卡积分 <span style="font-weight:400;color:var(--text-muted);">（留空跟随全局设置）</span></label>
+      <input class="form-input" id="inputCoursePoints" type="number" min="1" max="100" placeholder="例如：20（1-100）">
+      <p class="settings-hint" id="coursePointsHint" style="display:none;margin-top:6px;">该课程已有打卡记录，积分已锁定，避免历史积分错乱</p>
     </div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="closeModal()">取消</button>
@@ -290,6 +295,20 @@
       </button>
     </div>
     
+    <div class="settings-section">
+      <div class="settings-section-title">⭐ 积分设置</div>
+      <div class="settings-info" style="margin-bottom:10px;">
+        <p id="pointsSettingsHint" style="font-size:11px;color:var(--text-muted);">当前：每次打卡 +20 分</p>
+      </div>
+      <label class="form-label">每次打卡积分（1-100）</label>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <input type="range" id="rangePointsPerCheckin" min="1" max="100" value="20" oninput="onPointsInputChange('range')" style="flex:1;accent-color:var(--primary);">
+        <input class="form-input" id="inputPointsPerCheckin" type="number" min="1" max="100" value="20" oninput="onPointsInputChange('number')" style="width:72px;text-align:center;">
+      </div>
+      <p class="settings-hint">默认 20 分/次。一门课一天两节课只打卡一次，记 20 分。已有打卡记录的历史积分不受影响。</p>
+      <button class="settings-btn primary" onclick="savePointsSettings()" style="text-align:center;margin-top:8px;">💾 保存积分设置</button>
+    </div>
+
     <div class="settings-section">
       <div class="settings-section-title">🎁 奖品池管理</div>
       <div id="prizeListSettings"></div>
@@ -376,7 +395,7 @@
       <button class="btn btn-ghost" onclick="closeNotesModal()">取消</button>
       <button class="btn btn-ghost" id="btnMarkAbsence" style="flex:0.7;background:#FEF3C7;color:#92400E;border-color:#F59E0B;" onclick="markAbsence()">🏠 请假</button>
       <button class="btn btn-ghost" id="btnSaveNote" style="flex:0.7;">💾 备注</button>
-      <button class="btn btn-primary" id="btnCheckinNote" style="flex:0.8;">✅ 补打卡 +10⭐</button>
+      <button class="btn btn-primary" id="btnCheckinNote" style="flex:0.8;">✅ 补打卡</button>
     </div>
   </div>
 </div>
@@ -423,7 +442,7 @@
 </div>
 
 <!-- Cloud Sync -->
-  <script src="js/cloud.js?v=29"></script>
-<script src="js/app.js?v=29"></script>
+  <script src="js/cloud.js?v=32"></script>
+<script src="js/app.js?v=32"></script>
 </body>
 </html>

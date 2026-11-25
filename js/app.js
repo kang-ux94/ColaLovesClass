@@ -4,7 +4,12 @@
 
 // --- 常量定义 ---
 const STORAGE_KEY = 'cola_class_data';
-const POINTS_PER_CHECKIN = 10;
+// 打卡积分：默认 20 分/次（一天两节课共用一次打卡），设置页可全局修改，课程编辑可单独覆盖
+const DEFAULT_POINTS_PER_CHECKIN = 20;
+// v29 及之前积分固定 10 分，用于补齐历史打卡记录（保证历史明细不受后续配置变更影响）
+const LEGACY_POINTS_PER_CHECKIN = 10;
+const MIN_POINTS_PER_CHECKIN = 1;
+const MAX_POINTS_PER_CHECKIN = 100;
 const ROUND_MAX = 100;
 const FIRST_ROUND_START = 90;
 
@@ -74,7 +79,71 @@ function saveState() {
   }
 }
 
+// 一次性历史修正：2026-11-24 舞蹈课当时按旧规则记成了 10 分，应为 20 分。
+// 幂等：只补仍是旧值的记录，已是 20 分则跳过，重复执行不会重复加分；
+// 基于记录实际值而非标记位，因此云端数据覆盖本地后仍能再次修正。
+function fixDanceCheckin1124() {
+  const DATE = '2026-11-24';
+  const TARGET = 20;
+  if (!Array.isArray(appState.checkins) || !Array.isArray(appState.courses)) return false;
+  const danceIds = new Set(appState.courses.filter(c => (c.name || '').includes('舞蹈')).map(c => c.id));
+  if (danceIds.size === 0) return false;
+  let changed = false;
+  appState.checkins.forEach(chk => {
+    if (chk.date !== DATE || chk.isAbsence || chk.noteOnly) return;
+    if (!danceIds.has(chk.courseId)) return;
+    const cur = Number(chk.points);
+    if (!Number.isFinite(cur) || cur >= TARGET) return;
+    const delta = TARGET - cur;
+    chk.points = TARGET;
+    if (appState.points) {
+      appState.points.total = (appState.points.total || 0) + delta;
+      const cp = appState.points.courses && appState.points.courses[chk.courseId];
+      if (cp) {
+        cp.total = (cp.total || 0) + delta;
+        cp.roundPoints = (cp.roundPoints || 0) + delta;
+      }
+    }
+    changed = true;
+  });
+  return changed;
+}
+
+// 兼容旧版本数据：补齐积分配置与历史打卡的得分（一次性迁移，之后不再变化）
+function normalizeState() {
+  let changed = false;
+  if (!appState.settings) { appState.settings = {}; changed = true; }
+  const pts = Number(appState.settings.pointsPerCheckin);
+  if (!Number.isFinite(pts) || pts < MIN_POINTS_PER_CHECKIN || pts > MAX_POINTS_PER_CHECKIN) {
+    appState.settings.pointsPerCheckin = DEFAULT_POINTS_PER_CHECKIN;
+    changed = true;
+  }
+  // v29 及之前的打卡记录没有 points 字段，按当时固定的 10 分补齐
+  if (Array.isArray(appState.checkins)) {
+    appState.checkins.forEach(c => {
+      if (c.points === undefined && !c.isAbsence) {
+        c.points = LEGACY_POINTS_PER_CHECKIN;
+        changed = true;
+      }
+    });
+  }
+  // 老课程的每周排课没有 startDate，视为从更早以前就生效，历史打卡显示保持不变
+  if (Array.isArray(appState.courses)) {
+    appState.courses.forEach(c => {
+      if (Array.isArray(c.schedules)) {
+        c.schedules.forEach(s => {
+          if (!s.startDate) { s.startDate = '2000-01-01'; changed = true; }
+        });
+      }
+    });
+  }
+  // 11/24 舞蹈课积分修正（本地数据）
+  if (fixDanceCheckin1124()) changed = true;
+  if (changed) saveState();
+}
+
 let appState = loadState();
+normalizeState();
 let editingCourseId = null;
 
 // 从云端数据同步 profile 名字到本地（cola_profiles + appState 双写）
@@ -125,6 +194,8 @@ function onGatePassed(localData) {
         const s = appState.settings;
         appState = cloudData;
         appState.settings = { ...appState.settings, ...s };
+        // 云端数据可能仍是旧积分，覆盖后重新执行一次修正
+        fixDanceCheckin1124();
         saveState();
         renderAll();
       } else if (localTime > cloudTime) {
@@ -148,7 +219,7 @@ function getDefaultState() {
     points: { total: 0, courses: {} },
     blindBoxHistory: [],
     prizePool: JSON.parse(JSON.stringify(DEFAULT_PRIZE_POOL)),
-    settings: { notifications: false, sound: true }
+    settings: { notifications: false, sound: true, pointsPerCheckin: DEFAULT_POINTS_PER_CHECKIN }
   };
 }
 
@@ -167,6 +238,11 @@ function today() {
 function formatDate(dateStr) {
   const [y, m, d] = dateStr.split('-');
   return `${parseInt(m)}月${parseInt(d)}日`;
+}
+
+// 本地日期转 YYYY-MM-DD（不用 toISOString，避免 UTC 导致日期偏移一天）
+function toLocalDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function getWeekDates() {
@@ -227,6 +303,9 @@ function doCheckin(courseId, customDate = null, note = null) {
     return false;
   }
   
+  // 本次打卡积分（写入记录，历史明细不受后续配置变更影响）
+  const pts = getPointsPerCheckin(courseId);
+  
   // 记录打卡
   appState.checkins.push({
     id: 'chk_' + Date.now(),
@@ -234,13 +313,14 @@ function doCheckin(courseId, customDate = null, note = null) {
     date: dateStr,
     time: new Date().toTimeString().slice(0, 5),
     note: note || null,
+    points: pts,
   });
   
   // 更新积分
   const cp = getCoursePoints(courseId);
-  cp.roundPoints += POINTS_PER_CHECKIN;
-  cp.total += POINTS_PER_CHECKIN;
-  appState.points.total += POINTS_PER_CHECKIN;
+  cp.roundPoints += pts;
+  cp.total += pts;
+  appState.points.total += pts;
   
   saveState();
   return cp.roundPoints >= ROUND_MAX;
@@ -298,6 +378,18 @@ function getCourse(courseId) {
   return appState.courses.find(c => c.id === courseId);
 }
 
+// 获取每次打卡积分：课程单独设置 → 全局设置 → 默认 20
+function getPointsPerCheckin(courseId) {
+  if (courseId) {
+    const course = getCourse(courseId);
+    const pts = Number(course?.pointsPerCheckin);
+    if (Number.isFinite(pts) && pts >= MIN_POINTS_PER_CHECKIN && pts <= MAX_POINTS_PER_CHECKIN) return pts;
+  }
+  const globalPts = Number(appState.settings?.pointsPerCheckin);
+  if (Number.isFinite(globalPts) && globalPts >= MIN_POINTS_PER_CHECKIN && globalPts <= MAX_POINTS_PER_CHECKIN) return globalPts;
+  return DEFAULT_POINTS_PER_CHECKIN;
+}
+
 // --- UI 渲染 ---
 
 // 首页 - 今日课程（按时间段展示）
@@ -308,8 +400,8 @@ function renderTodayClasses() {
   document.getElementById('todayDate').textContent = `${t.year}年${t.month}月${t.day}日`;
   document.getElementById('todayWeekday').textContent = WEEKDAYS_FULL[t.dayOfWeek];
   
-  const todayCourses = appState.courses.filter(c => 
-    c.schedules.some(s => s.dayOfWeek === t.dayOfWeek)
+  const todayCourses = appState.courses.filter(c =>
+    courseHasClassOnDate(c, t.dateStr, t.dayOfWeek)
   );
   
   if (todayCourses.length === 0) {
@@ -350,7 +442,7 @@ function renderTodayClasses() {
     } else if (allAbsent) {
       btnHtml = `<button class="checkin-btn absent-btn" onclick="quickCheckin('${course.id}')">🏠 请假中 → 打卡</button>`;
     } else if (anyPending) {
-      btnHtml = `<button class="checkin-btn go" onclick="quickCheckin('${course.id}')">打卡 +10⭐</button>`;
+      btnHtml = `<button class="checkin-btn go" onclick="quickCheckin('${course.id}')">打卡 +${getPointsPerCheckin(course.id)}⭐</button>`;
     } else {
       btnHtml = `<button class="checkin-btn missed-btn" onclick="quickCheckin('${course.id}')">补打卡</button>`;
     }
@@ -381,9 +473,17 @@ function renderTodayClasses() {
   }).join('');
 }
 
+// 每周排课是否在指定日期生效：新增排课从 startDate 起算，老排课（无 startDate）视为一直生效
+function isScheduleActiveOn(schedule, dateStr) {
+  if (!dateStr || !schedule.startDate) return true;
+  return dateStr >= schedule.startDate;
+}
+
 // 获取课程在指定日期的上课时间（每周固定 + 按日期）
 function getSchedulesForDay(course, dayOfWeek, dateStr = null) {
-  const weeklySchedules = course.schedules.filter(s => s.dayOfWeek === dayOfWeek);
+  const weeklySchedules = course.schedules.filter(s =>
+    s.dayOfWeek === dayOfWeek && isScheduleActiveOn(s, dateStr)
+  );
   let dateSchedules = [];
   if (dateStr && course.dateSchedules) {
     dateSchedules = course.dateSchedules.filter(ds => ds.date === dateStr);
@@ -393,6 +493,15 @@ function getSchedulesForDay(course, dayOfWeek, dateStr = null) {
     const tb = b.time || '';
     return ta.localeCompare(tb);
   });
+}
+
+// 某门课在指定日期是否有课（统一走生效日期过滤，供日历/徽标/提醒等复用）
+function courseHasClassOnDate(course, dateStr, dayOfWeek) {
+  const weekly = course.schedules.some(s =>
+    s.dayOfWeek === dayOfWeek && isScheduleActiveOn(s, dateStr)
+  );
+  const byDate = !!(course.dateSchedules && course.dateSchedules.some(ds => ds.date === dateStr));
+  return weekly || byDate;
 }
 
 function isPastClass(course) {
@@ -427,8 +536,8 @@ function getSlotStatus(courseId, dateStr, scheduleTime) {
 // 积分概览
 function renderPointsBar() {
   const t = today();
-  const todayCourses = appState.courses.filter(c => 
-    c.schedules.some(s => s.dayOfWeek === t.dayOfWeek)
+  const todayCourses = appState.courses.filter(c =>
+    courseHasClassOnDate(c, t.dateStr, t.dayOfWeek)
   );
   
   // 找到当天课程中积分最接近100的
@@ -487,9 +596,8 @@ function renderWeekCalendar() {
   const t = today();
   
   container.innerHTML = week.map(d => {
-    const hasClass = appState.courses.some(c => 
-      c.schedules.some(s => s.dayOfWeek === d.dayOfWeek) ||
-      (c.dateSchedules && c.dateSchedules.some(ds => ds.date === d.dateStr))
+    const hasClass = appState.courses.some(c =>
+      courseHasClassOnDate(c, d.dateStr, d.dayOfWeek)
     );
     return `
       <div class="day-cell ${d.isToday ? 'today' : ''}" 
@@ -521,9 +629,11 @@ function selectDay(dayOfWeek) {
 
 function renderDaySchedule(dayOfWeek) {
   const container = document.getElementById('daySchedule');
-  const courses = appState.courses.filter(c => 
-    c.schedules.some(s => s.dayOfWeek === dayOfWeek) ||
-    (c.dateSchedules && c.dateSchedules.some(ds => new Date(ds.date).getDay() === dayOfWeek))
+  // 周历按星期展示，不绑定具体日期：仅过滤掉尚未生效的新增每周排课
+  const weekRef = getWeekDates().find(d => d.dayOfWeek === dayOfWeek);
+  const refDate = weekRef ? weekRef.dateStr : today().dateStr;
+  const courses = appState.courses.filter(c =>
+    courseHasClassOnDate(c, refDate, dayOfWeek)
   );
   
   if (courses.length === 0) {
@@ -605,7 +715,7 @@ function renderPointsBreakdown() {
           <div class="cp-icon" style="background:${c.color}22;color:${c.color}">${c.icon}</div>
           <div>
             <div class="cp-name">${c.name}</div>
-            <div class="cp-rounds">已完成 ${cp.completedRounds} 轮抽奖</div>
+            <div class="cp-rounds">已完成 ${cp.completedRounds} 轮 · 每次 +${getPointsPerCheckin(c.id)} 分</div>
           </div>
         </div>
         <div class="round-progress" style="margin-bottom:10px;">
@@ -649,7 +759,7 @@ function renderHistory() {
       date: c.date,
       type: 'checkin',
       text: text,
-      points: c.time ? POINTS_PER_CHECKIN : 0,
+      points: c.isAbsence ? 0 : (c.points ?? LEGACY_POINTS_PER_CHECKIN),
       ts: new Date(c.date + 'T' + (c.time || '00:00')).getTime(),
     });
   });
@@ -1106,7 +1216,7 @@ function openModal(title, courseData = null) {
   const container = document.getElementById('scheduleRows');
   container.innerHTML = '';
   schedules.forEach((s, idx) => {
-    container.appendChild(buildScheduleRow(s.dayOfWeek, s.time, idx === 0));
+    container.appendChild(buildScheduleRow(s.dayOfWeek, s.time, idx === 0, s.startDate));
   });
   
   // 构建日期课程列表
@@ -1129,12 +1239,21 @@ function openModal(title, courseData = null) {
     document.querySelector(`.color-dot[data-color="${courseData.color}"]`)?.classList.add('selected');
   }
   
+  // 课程单独积分：已有打卡记录时锁定，避免历史积分错乱
+  const hasCheckins = !!courseData && appState.checkins.some(c => c.courseId === courseData.id);
+  const ptsInput = document.getElementById('inputCoursePoints');
+  ptsInput.value = courseData?.pointsPerCheckin || '';
+  ptsInput.disabled = hasCheckins;
+  document.getElementById('coursePointsHint').style.display = hasCheckins ? '' : 'none';
+  
   modal.style.display = 'flex';
 }
 
-function buildScheduleRow(dayOfWeek = 1, time = '16:00', isFirst = false) {
+function buildScheduleRow(dayOfWeek = 1, time = '16:00', isFirst = false, startDate = null) {
   const wrapper = document.createElement('div');
   wrapper.className = 'schedule-row';
+  // 保存原有生效日期；新增时间段从今天生效
+  wrapper.dataset.startDate = startDate || today().dateStr;
   
   // 星期选择（小号芯片）
   const daySel = document.createElement('div');
@@ -1241,7 +1360,7 @@ function collectSchedulesFromForm() {
     const timeInput = row.querySelector('.schedule-time-input');
     const time = timeInput ? timeInput.value : '16:00';
     if (time) {
-      schedules.push({ dayOfWeek, time });
+      schedules.push({ dayOfWeek, time, startDate: row.dataset.startDate || today().dateStr });
     }
   });
   return schedules;
@@ -1275,15 +1394,19 @@ function saveCourse() {
   const icon = document.getElementById('inputCourseIcon').value || '📚';
   const color = getSelectedColor();
   
+  // 留空表示跟随全局设置；填写则单独覆盖（范围 1-100）
+  const parsedPts = parseInt(document.getElementById('inputCoursePoints').value.trim(), 10);
+  const pointsPerCheckin = (Number.isFinite(parsedPts) && parsedPts >= MIN_POINTS_PER_CHECKIN && parsedPts <= MAX_POINTS_PER_CHECKIN) ? parsedPts : null;
+  
   if (editingCourseId) {
     const idx = appState.courses.findIndex(c => c.id === editingCourseId);
     if (idx >= 0) {
-      appState.courses[idx] = { ...appState.courses[idx], name, schedules, icon, color, dateSchedules };
+      appState.courses[idx] = { ...appState.courses[idx], name, schedules, icon, color, dateSchedules, pointsPerCheckin };
     }
   } else {
     const newCourse = {
       id: 'c_' + Date.now(),
-      name, schedules, icon, color, dateSchedules,
+      name, schedules, icon, color, dateSchedules, pointsPerCheckin,
     };
     appState.courses.push(newCourse);
     
@@ -1357,7 +1480,7 @@ function quickCheckin(courseId) {
       openBlindBox(courseId);
     }, 500);
   } else {
-    showToast(`✅ ${course.icon} 打卡成功！+${POINTS_PER_CHECKIN}⭐`);
+    showToast(`✅ ${course.icon} 打卡成功！+${getPointsPerCheckin(courseId)}⭐`);
   }
   
   renderAll();
@@ -1385,8 +1508,8 @@ function switchTab(tabName) {
 // --- 防遗忘机制 ---
 function updatePendingBadge() {
   const t = today();
-  const todayCourses = appState.courses.filter(c => 
-    c.schedules.some(s => s.dayOfWeek === t.dayOfWeek)
+  const todayCourses = appState.courses.filter(c =>
+    courseHasClassOnDate(c, t.dateStr, t.dayOfWeek)
   );
   
   // 按时间段统计待打卡数
@@ -1459,8 +1582,8 @@ function scheduleNotifications() {
   if (!appState.settings.notifications) return;
   
   const t = today();
-  const todayCourses = appState.courses.filter(c => 
-    c.schedules.some(s => s.dayOfWeek === t.dayOfWeek)
+  const todayCourses = appState.courses.filter(c =>
+    courseHasClassOnDate(c, t.dateStr, t.dayOfWeek)
   );
   
   todayCourses.forEach(course => {
@@ -1563,9 +1686,8 @@ function buildDayStatusMap(year, month, daysInMonth) {
     const dayOfWeek = new Date(year, month, d).getDay();
     
     // 当天是否有课程（每周固定 + 按日期）
-    const hasCourse = appState.courses.some(c => 
-      c.schedules.some(s => s.dayOfWeek === dayOfWeek) ||
-      (c.dateSchedules && c.dateSchedules.some(ds => ds.date === dateStr))
+    const hasCourse = appState.courses.some(c =>
+      courseHasClassOnDate(c, dateStr, dayOfWeek)
     );
     
     if (!hasCourse) {
@@ -1581,9 +1703,8 @@ function buildDayStatusMap(year, month, daysInMonth) {
     }
     
     // 过去日期：检查是否已打卡/请假
-    const todayCourses = appState.courses.filter(c => 
-      c.schedules.some(s => s.dayOfWeek === dayOfWeek) ||
-      (c.dateSchedules && c.dateSchedules.some(ds => ds.date === dateStr))
+    const todayCourses = appState.courses.filter(c =>
+      courseHasClassOnDate(c, dateStr, dayOfWeek)
     );
     
     let hasChecked = false;
@@ -1625,9 +1746,8 @@ function onCalDayClick(dateStr, status) {
 function showDayDetail(dateStr) {
   const container = document.getElementById('calDayDetail');
   const dayOfWeek = new Date(dateStr).getDay();
-  const courses = appState.courses.filter(c => 
-    c.schedules.some(s => s.dayOfWeek === dayOfWeek) ||
-    (c.dateSchedules && c.dateSchedules.some(ds => ds.date === dateStr))
+  const courses = appState.courses.filter(c =>
+    courseHasClassOnDate(c, dateStr, dayOfWeek)
   );
   
   if (courses.length === 0) {
@@ -1735,7 +1855,7 @@ function openNotesModal(courseId, dateStr, icon, name) {
     btnSave.style.flex = '1';
   } else {
     btnCheckin.style.display = '';
-    btnCheckin.textContent = '✅ 补打卡 +10⭐';
+    btnCheckin.textContent = `✅ 补打卡 +${getPointsPerCheckin(notesCourseId)}⭐`;
     btnCheckin.style.background = '';
     btnCheckin.style.color = '';
     btnAbsence.style.display = '';
@@ -1826,7 +1946,7 @@ function doCheckinWithNote() {
       openBlindBox(notesCourseId);
     }, 500);
   } else {
-    showToast(`✅ 补打卡成功！+${POINTS_PER_CHECKIN}⭐`);
+    showToast(`✅ 补打卡成功！+${getPointsPerCheckin(notesCourseId)}⭐`);
   }
 }
 
@@ -1864,10 +1984,15 @@ function openBatchCancel() {
   const todayStr = today().dateStr;
   const end = new Date();
   end.setMonth(end.getMonth() + 2);
-  const endStr = end.toISOString().slice(0, 10);
+  const endStr = toLocalDateStr(end);
   
-  document.getElementById('batchStartDate').value = todayStr;
-  document.getElementById('batchEndDate').value = endStr;
+  const startInput = document.getElementById('batchStartDate');
+  const endInput = document.getElementById('batchEndDate');
+  // 批量操作只允许今天及以后，避免改动已打卡的历史日期
+  startInput.min = todayStr;
+  endInput.min = todayStr;
+  startInput.value = todayStr;
+  endInput.value = endStr;
   document.getElementById('batchNote').value = '';
   
   renderBatchDayChips();
@@ -1989,14 +2114,16 @@ function updateBatchSummary() {
   }
   
   let count = 0;
-  const start = new Date(startStr);
-  const end = new Date(endStr);
+  const todayStr = today().dateStr;
+  const start = new Date(startStr + 'T00:00:00');
+  const end = new Date(endStr + 'T00:00:00');
   const current = new Date(start);
   
   while (current <= end) {
+    const dateStr = toLocalDateStr(current);
     const dayOfWeek = current.getDay();
-    if (selectedDays.includes(dayOfWeek)) {
-      const dateStr = current.toISOString().slice(0, 10);
+    // 跳过过去日期，历史打卡记录不受批量操作影响
+    if (dateStr >= todayStr && selectedDays.includes(dayOfWeek)) {
       selectedSchedules.forEach(({ courseId, time }) => {
         const course = getCourse(courseId);
         if (!course) return;
@@ -2043,14 +2170,22 @@ function confirmBatchCancel() {
   
   let createdCount = 0;
   let skipCount = 0;
-  const start = new Date(startStr);
-  const end = new Date(endStr);
+  let pastSkipCount = 0;
+  const todayStr = today().dateStr;
+  const start = new Date(startStr + 'T00:00:00');
+  const end = new Date(endStr + 'T00:00:00');
   const current = new Date(start);
   
   while (current <= end) {
+    const dateStr = toLocalDateStr(current);
     const dayOfWeek = current.getDay();
     if (selectedDays.includes(dayOfWeek)) {
-      const dateStr = current.toISOString().slice(0, 10);
+      // 过去日期一律跳过，避免覆盖已打卡的历史记录
+      if (dateStr < todayStr) {
+        pastSkipCount++;
+        current.setDate(current.getDate() + 1);
+        continue;
+      }
       selectedSchedules.forEach(({ courseId, time }) => {
         const course = getCourse(courseId);
         if (!course) return;
@@ -2089,7 +2224,7 @@ function confirmBatchCancel() {
   }
   
   if (createdCount === 0) {
-    showToast('所选时段均已处理，无需重复操作');
+    showToast(pastSkipCount > 0 ? '所选范围只有过去日期，未做改动（历史打卡保持不变）' : '所选时段均已处理，无需重复操作');
     closeBatchCancel();
     return;
   }
@@ -2099,7 +2234,8 @@ function confirmBatchCancel() {
   renderAll();
   
   let msg = `✅ 已为 ${createdCount} 个课程日标记请假 🏠`;
-  if (skipCount > 0) msg += `（${skipCount} 个已跳过）`;
+  if (skipCount > 0) msg += `（${skipCount} 个已有记录，已跳过）`;
+  if (pastSkipCount > 0) msg += `（${pastSkipCount} 个过去日期已跳过）`;
   showToast(msg);
 }
 
@@ -2519,11 +2655,44 @@ function resetAllData() {
 // =============================================
 //  设置面板
 // =============================================
+// --- 积分设置 ---
+function onPointsInputChange(source) {
+  const range = document.getElementById('rangePointsPerCheckin');
+  const num = document.getElementById('inputPointsPerCheckin');
+  const raw = parseInt(source === 'range' ? range.value : num.value, 10);
+  if (!Number.isFinite(raw)) return;
+  const val = Math.min(MAX_POINTS_PER_CHECKIN, Math.max(MIN_POINTS_PER_CHECKIN, raw));
+  range.value = val;
+  num.value = val;
+}
+
+function updatePointsSettingsUI() {
+  const pts = getPointsPerCheckin();
+  document.getElementById('rangePointsPerCheckin').value = pts;
+  document.getElementById('inputPointsPerCheckin').value = pts;
+  document.getElementById('pointsSettingsHint').textContent = `当前：每次打卡 +${pts} 分（覆盖当天该课程的全部时间段）`;
+}
+
+function savePointsSettings() {
+  const raw = parseInt(document.getElementById('inputPointsPerCheckin').value, 10);
+  if (!Number.isFinite(raw) || raw < MIN_POINTS_PER_CHECKIN || raw > MAX_POINTS_PER_CHECKIN) {
+    showToast(`请输入 ${MIN_POINTS_PER_CHECKIN}-${MAX_POINTS_PER_CHECKIN} 之间的积分`);
+    updatePointsSettingsUI();
+    return;
+  }
+  appState.settings.pointsPerCheckin = raw;
+  saveState();
+  updatePointsSettingsUI();
+  renderAll();
+  showToast(`✅ 已保存：每次打卡 +${raw}⭐`);
+}
+
 function openSettings() {
   // 暂停背景动画减少GPU负担
   document.getElementById('particles-canvas').style.display = 'none';
   document.getElementById('modalSettings').style.display = 'flex';
   renderPrizeListSettings();
+  updatePointsSettingsUI();
   // iOS Safari PWA安装提示
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
