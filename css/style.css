@@ -1892,6 +1892,58 @@ body::before {
   box-shadow: 0 0 0 3px rgba(255,107,53,0.06);
 }
 
+/* 每周时间段：上排星期/时间，下排生效与结束日期 */
+.schedule-row.weekly-row {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.schedule-row .schedule-main-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.schedule-date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(240,230,211,0.6);
+}
+
+.schedule-date-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.schedule-date-input {
+  flex: 1;
+  min-width: 110px;
+  padding: 6px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  font-family: var(--font-main);
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.schedule-date-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.schedule-date-tip {
+  flex-basis: 100%;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 .schedule-row .del-schedule-btn {
   width: 30px; height: 30px;
   border-radius: 50%;

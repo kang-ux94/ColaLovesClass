@@ -473,10 +473,12 @@ function renderTodayClasses() {
   }).join('');
 }
 
-// 每周排课是否在指定日期生效：新增排课从 startDate 起算，老排课（无 startDate）视为一直生效
+// 每周排课是否在指定日期生效：startDate 起、endDate 止；两端留空/缺失都视为无限制
 function isScheduleActiveOn(schedule, dateStr) {
-  if (!dateStr || !schedule.startDate) return true;
-  return dateStr >= schedule.startDate;
+  if (!dateStr) return true;
+  if (schedule.startDate && dateStr < schedule.startDate) return false;
+  if (schedule.endDate && dateStr > schedule.endDate) return false;
+  return true;
 }
 
 // 获取课程在指定日期的上课时间（每周固定 + 按日期）
@@ -1216,7 +1218,7 @@ function openModal(title, courseData = null) {
   const container = document.getElementById('scheduleRows');
   container.innerHTML = '';
   schedules.forEach((s, idx) => {
-    container.appendChild(buildScheduleRow(s.dayOfWeek, s.time, idx === 0, s.startDate));
+    container.appendChild(buildScheduleRow(s.dayOfWeek, s.time, idx === 0, s.startDate, s.endDate));
   });
   
   // 构建日期课程列表
@@ -1249,13 +1251,17 @@ function openModal(title, courseData = null) {
   modal.style.display = 'flex';
 }
 
-function buildScheduleRow(dayOfWeek = 1, time = '16:00', isFirst = false, startDate = null) {
+function buildScheduleRow(dayOfWeek = 1, time = '16:00', isFirst = false, startDate = null, endDate = null) {
   const wrapper = document.createElement('div');
-  wrapper.className = 'schedule-row';
+  wrapper.className = 'schedule-row weekly-row';
   // 保存原有生效日期；新增时间段从今天生效
-  wrapper.dataset.startDate = startDate || today().dateStr;
+  const effDate = startDate || today().dateStr;
+  wrapper.dataset.startDate = effDate;
   
-  // 星期选择（小号芯片）
+  // 第一行：星期 + 时间 + 删除
+  const mainRow = document.createElement('div');
+  mainRow.className = 'schedule-main-row';
+  
   const daySel = document.createElement('div');
   daySel.className = 'mini-day-selector';
   WEEKDAYS_FULL.forEach((name, idx) => {
@@ -1269,16 +1275,14 @@ function buildScheduleRow(dayOfWeek = 1, time = '16:00', isFirst = false, startD
     };
     daySel.appendChild(chip);
   });
-  wrapper.appendChild(daySel);
+  mainRow.appendChild(daySel);
   
-  // 时间输入
   const timeInput = document.createElement('input');
   timeInput.type = 'time';
   timeInput.className = 'schedule-time-input';
   timeInput.value = time;
-  wrapper.appendChild(timeInput);
+  mainRow.appendChild(timeInput);
   
-  // 删除按钮
   const delBtn = document.createElement('button');
   delBtn.className = 'del-schedule-btn';
   delBtn.textContent = '✕';
@@ -1291,7 +1295,35 @@ function buildScheduleRow(dayOfWeek = 1, time = '16:00', isFirst = false, startD
     }
     wrapper.remove();
   };
-  wrapper.appendChild(delBtn);
+  mainRow.appendChild(delBtn);
+  wrapper.appendChild(mainRow);
+  
+  // 第二行：生效日期 + 结束日期（留空表示一直有效）
+  const dateRow = document.createElement('div');
+  dateRow.className = 'schedule-date-range';
+  const mkLabel = (txt) => {
+    const l = document.createElement('span');
+    l.className = 'schedule-date-label';
+    l.textContent = txt;
+    return l;
+  };
+  const startInput = document.createElement('input');
+  startInput.type = 'date';
+  startInput.className = 'schedule-date-input';
+  startInput.value = effDate;
+  const endInput = document.createElement('input');
+  endInput.type = 'date';
+  endInput.className = 'schedule-date-input';
+  endInput.value = endDate || '';
+  dateRow.appendChild(mkLabel('生效'));
+  dateRow.appendChild(startInput);
+  dateRow.appendChild(mkLabel('结束'));
+  dateRow.appendChild(endInput);
+  const tip = document.createElement('span');
+  tip.className = 'schedule-date-tip';
+  tip.textContent = '结束留空＝长期有效';
+  dateRow.appendChild(tip);
+  wrapper.appendChild(dateRow);
   
   return wrapper;
 }
@@ -1360,7 +1392,12 @@ function collectSchedulesFromForm() {
     const timeInput = row.querySelector('.schedule-time-input');
     const time = timeInput ? timeInput.value : '16:00';
     if (time) {
-      schedules.push({ dayOfWeek, time, startDate: row.dataset.startDate || today().dateStr });
+      const dateInputs = row.querySelectorAll('.schedule-date-input');
+      const startDate = dateInputs[0]?.value || today().dateStr;
+      const endDate = dateInputs[1]?.value || null;
+      const item = { dayOfWeek, time, startDate };
+      if (endDate) item.endDate = endDate;
+      schedules.push(item);
     }
   });
   return schedules;
@@ -2128,7 +2165,7 @@ function updateBatchSummary() {
         const course = getCourse(courseId);
         if (!course) return;
         const hasSchedule = course.schedules.some(s =>
-          s.dayOfWeek === dayOfWeek && s.time === time
+          s.dayOfWeek === dayOfWeek && s.time === time && isScheduleActiveOn(s, dateStr)
         );
         if (hasSchedule) {
           count++;
@@ -2190,7 +2227,7 @@ function confirmBatchCancel() {
         const course = getCourse(courseId);
         if (!course) return;
         const hasSchedule = course.schedules.some(s =>
-          s.dayOfWeek === dayOfWeek && s.time === time
+          s.dayOfWeek === dayOfWeek && s.time === time && isScheduleActiveOn(s, dateStr)
         );
         if (!hasSchedule) return;
         
