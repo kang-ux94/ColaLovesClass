@@ -1666,6 +1666,20 @@ function changeMonth(delta) {
   renderCalendar();
 }
 
+// 某天累计打卡积分（供日历格子显示，读取每条打卡记录的实际得分）
+function getDayEarnedPoints(dateStr, dayOfWeek) {
+  const courseIds = appState.courses
+    .filter(c => courseHasClassOnDate(c, dateStr, dayOfWeek))
+    .map(c => c.id);
+  let sum = 0;
+  appState.checkins.forEach(ch => {
+    if (ch.date === dateStr && !ch.isAbsence && !ch.noteOnly && courseIds.includes(ch.courseId)) {
+      sum += (ch.points ?? LEGACY_POINTS_PER_CHECKIN);
+    }
+  });
+  return sum;
+}
+
 function renderCalendar() {
   const grid = document.getElementById('calGrid');
   const label = document.getElementById('calMonthLabel');
@@ -1695,6 +1709,7 @@ function renderCalendar() {
     const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const status = dayStatusMap[dateStr] || 'no-course';
     const isToday = dateStr === t.dateStr;
+    const dayPoints = status === 'no-course' ? 0 : getDayEarnedPoints(dateStr, new Date(calYear, calMonth, d).getDay());
     
     let cls = 'cal-day ' + status;
     if (isToday) cls += ' today';
@@ -1702,7 +1717,7 @@ function renderCalendar() {
     
     html += `<div class="${cls}" data-date="${dateStr}" onclick="onCalDayClick('${dateStr}', '${status}')">
       <span class="cal-day-num">${d}</span>
-      ${status !== 'no-course' ? '<span class="cal-day-dot"></span>' : ''}
+      ${dayPoints > 0 ? `<span class="cal-day-points">+${dayPoints}</span>` : (status !== 'no-course' ? '<span class="cal-day-dot"></span>' : '')}
     </div>`;
   }
   
@@ -1796,9 +1811,26 @@ function showDayDetail(dateStr) {
   const isFuture = dateStr > t.dateStr;
   const isToday = dateStr === t.dateStr;
   
-  let html = `<div style="font-weight:700;margin-bottom:8px;">${formatDate(dateStr)} ${WEEKDAYS_FULL[dayOfWeek]}</div>`;
+  // 当天累计积分（每门课一天一条打卡记录，读取各自实际得分）
+  let dayTotalPoints = 0;
+  courses.forEach(c => {
+    const rec = appState.checkins.find(ch =>
+      ch.courseId === c.id && ch.date === dateStr && !ch.isAbsence && !ch.noteOnly
+    );
+    if (rec) dayTotalPoints += (rec.points ?? LEGACY_POINTS_PER_CHECKIN);
+  });
+  
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-bottom:8px;">
+    <span>${formatDate(dateStr)} ${WEEKDAYS_FULL[dayOfWeek]}</span>
+    ${dayTotalPoints > 0 ? `<span class="cal-day-total-points">当日 +${dayTotalPoints}⭐</span>` : ''}
+  </div>`;
   
   courses.forEach(course => {
+    // 该课程当天打卡记录的实际得分
+    const dayCheckin = appState.checkins.find(ch =>
+      ch.courseId === course.id && ch.date === dateStr && !ch.isAbsence && !ch.noteOnly
+    );
+    const earnedPoints = dayCheckin ? (dayCheckin.points ?? LEGACY_POINTS_PER_CHECKIN) : 0;
     const schedules = getSchedulesForDay(course, dayOfWeek, dateStr);
     const hasCheckin = isCheckedIn(course.id, dateStr);
     const noteRecord = appState.checkins.find(c => c.courseId === course.id && c.date === dateStr && (c.noteOnly || c.isAbsence || c.note));
@@ -1826,7 +1858,7 @@ function showDayDetail(dateStr) {
       <div class="cal-detail-course">
         <span style="font-size:20px;align-self:flex-start;margin-top:2px;">${course.icon}</span>
         <div style="flex:1;">
-          <div style="font-weight:600;">${course.name}</div>
+          <div style="font-weight:600;">${course.name}${earnedPoints > 0 ? ` <span class="cal-points-badge">+${earnedPoints}⭐</span>` : ''}</div>
           ${slotsHtml}
           ${noteRecord?.note ? `<div class="cal-detail-note">📝 ${noteRecord.note}</div>` : ''}
         </div>
