@@ -1828,6 +1828,29 @@ body::before {
   gap: 12px;
 }
 
+/* --- Install Guide Steps --- */
+.install-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+.install-step b {
+  flex: 0 0 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  margin-top: 1px;
+}
+.install-step span { font-size: 14px; color: var(--text); }
+
 /* --- Schedule Row Form --- */
 .schedule-row {
   display: flex;

@@ -2492,39 +2492,131 @@ function registerSW() {
 //  PWA 安装提示
 // =============================================
 let deferredPrompt = null;
+const INSTALL_DISMISSED_KEY = 'cola_install_dismissed';
+
+function isPWAInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+
+function isInstallDismissed() {
+  try { return localStorage.getItem(INSTALL_DISMISSED_KEY) === '1'; } catch (e) { return false; }
+}
+
+function markInstallDismissed() {
+  try { localStorage.setItem(INSTALL_DISMISSED_KEY, '1'); } catch (e) {}
+}
+
+function hideInstallUI() {
+  const banner = document.getElementById('installBanner');
+  const btn = document.getElementById('btnInstallPWA');
+  if (banner) banner.style.display = 'none';
+  if (btn) btn.style.display = 'none';
+}
 
 function listenPWAInstall() {
+  // 已安装 或 用户已选择不再提醒 → 完全不显示
+  if (isPWAInstalled() || isInstallDismissed()) {
+    hideInstallUI();
+    return;
+  }
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    // 显示安装横幅
-    document.getElementById('installBanner').style.display = 'block';
-    document.getElementById('btnInstallPWA').style.display = 'block';
+    if (!isPWAInstalled() && !isInstallDismissed()) {
+      const banner = document.getElementById('installBanner');
+      const btn = document.getElementById('btnInstallPWA');
+      if (banner) banner.style.display = 'block';
+      if (btn) btn.style.display = 'block';
+    }
   });
-  
-  // 如果已安装为PWA，隐藏提示
-  if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
-    document.getElementById('installBanner').style.display = 'none';
-    document.getElementById('btnInstallPWA').style.display = 'none';
-  }
+  // 华为/鸿蒙等浏览器可能不触发 beforeinstallprompt，延时兜底显示横幅
+  setTimeout(() => {
+    if (!deferredPrompt && !isPWAInstalled() && !isInstallDismissed()) {
+      const banner = document.getElementById('installBanner');
+      if (banner) banner.style.display = 'block';
+    }
+  }, 1200);
 }
 
-async function installPWA() {
+// 弹出安装指引：按浏览器给出明确步骤，点"添加"永远有反应
+function openInstallGuide() {
+  const ua = navigator.userAgent || '';
+  const isWechat = /MicroMessenger/i.test(ua);
+  const isIOS = /iPad|iPhone|iPod/i.test(ua);
+  const isHarmony = /HarmonyOS|HuaweiBrowser|ArkWeb|HONOR|Huawei/i.test(ua);
+
+  let steps;
+  if (isWechat) {
+    steps = `
+      <div class="install-step"><b>1</b><span>点右上角「···」</span></div>
+      <div class="install-step"><b>2</b><span>选择「在浏览器打开」</span></div>
+      <div class="install-step"><b>3</b><span>再按浏览器的「添加至桌面」操作</span></div>`;
+  } else if (isIOS) {
+    steps = `
+      <div class="install-step"><b>1</b><span>点屏幕底部中间的「分享」按钮（方框带向上箭头）</span></div>
+      <div class="install-step"><b>2</b><span>向下滑动，找到「添加到主屏幕」</span></div>
+      <div class="install-step"><b>3</b><span>点右上角「添加」，回桌面查看图标</span></div>`;
+  } else if (isHarmony) {
+    steps = `
+      <div class="install-step"><b>1</b><span>点华为浏览器底部或右上角的「⋮」菜单</span></div>
+      <div class="install-step"><b>2</b><span>选「添加至桌面」（部分版本叫「添加到主屏幕」）</span></div>
+      <div class="install-step"><b>3</b><span>确认名称后点「确定」，回桌面查看图标</span></div>
+      <p class="settings-hint" style="margin-top:10px;">若菜单里没有该选项：换用系统自带浏览器打开本页 → 点「分享」→「添加到桌面」</p>`;
+  } else {
+    steps = `
+      <div class="install-step"><b>1</b><span>点浏览器右上角的「⋮」菜单</span></div>
+      <div class="install-step"><b>2</b><span>选「安装应用」或「添加到主屏幕」</span></div>
+      <div class="install-step"><b>3</b><span>确认后回桌面查看图标</span></div>`;
+  }
+
+  // 支持标准安装的浏览器额外提供"一键安装"
+  document.getElementById('installGuideAuto').innerHTML = deferredPrompt
+    ? '<button class="btn btn-primary" onclick="installPWAAuto()" style="margin-bottom:14px;">📲 一键安装</button>'
+    : '';
+  document.getElementById('installGuideSteps').innerHTML = steps;
+  document.getElementById('modalInstallGuide').style.display = 'flex';
+}
+
+function installPWAAuto() {
   if (!deferredPrompt) {
-    showToast('📲 请用浏览器菜单「添加到主屏幕」');
+    showToast('当前浏览器不支持一键安装，请按下面步骤手动添加');
     return;
   }
   deferredPrompt.prompt();
-  const result = await deferredPrompt.userChoice;
-  if (result.outcome === 'accepted') {
-    showToast('✅ 已添加到主屏幕！');
-  }
-  deferredPrompt = null;
-  document.getElementById('installBanner').style.display = 'none';
+  deferredPrompt.userChoice.then((result) => {
+    if (result.outcome === 'accepted') {
+      markInstallDismissed();
+      showToast('✅ 已添加到主屏幕！');
+    }
+    deferredPrompt = null;
+    hideInstallUI();
+    document.getElementById('modalInstallGuide').style.display = 'none';
+  }).catch(() => {
+    deferredPrompt = null;
+    showToast('一键安装未成功，请按步骤手动添加');
+  });
+}
+
+// 点横幅/设置里的"添加"一律弹指引，确保有明确反馈
+function installPWA() {
+  openInstallGuide();
+}
+
+function closeInstallGuide() {
+  document.getElementById('modalInstallGuide').style.display = 'none';
 }
 
 function dismissInstall() {
-  document.getElementById('installBanner').style.display = 'none';
+  markInstallDismissed();
+  hideInstallUI();
+  showToast('已关闭，可在「设置 → 添加到手机主屏幕」重新查看');
+}
+
+function dismissInstallFromGuide() {
+  markInstallDismissed();
+  hideInstallUI();
+  document.getElementById('modalInstallGuide').style.display = 'none';
+  showToast('已关闭，之后不再提醒');
 }
 
 // =============================================
@@ -2762,15 +2854,14 @@ function openSettings() {
   document.getElementById('modalSettings').style.display = 'flex';
   renderPrizeListSettings();
   updatePointsSettingsUI();
-  // iOS Safari PWA安装提示
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-  if (isIOS && !isStandalone) {
-    document.getElementById('btnInstallPWA').style.display = 'block';
-    document.getElementById('btnInstallPWA').textContent = '📲 添加到主屏幕（点击后看底部提示）';
-    document.getElementById('btnInstallPWA').onclick = () => {
-      showToast('💡 点击浏览器底部「分享」→「添加到主屏幕」');
-    };
+  // 未安装且未选择"不再提醒"时，设置里显示添加按钮（统一弹指引弹窗）
+  const installBtn = document.getElementById('btnInstallPWA');
+  if (installBtn && !isPWAInstalled() && !isInstallDismissed()) {
+    installBtn.style.display = 'block';
+    installBtn.textContent = '📲 添加到手机主屏幕';
+    installBtn.onclick = () => openInstallGuide();
+  } else if (installBtn) {
+    installBtn.style.display = 'none';
   }
 }
 
